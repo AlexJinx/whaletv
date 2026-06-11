@@ -1,0 +1,3 @@
+-keep class com.jing.whaletv.data.local.** { *; }
+-keep class org.xmlpull.v1.** { *; }
+-dontwarn org.xmlpull.v1.**
