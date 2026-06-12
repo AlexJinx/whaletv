@@ -5,7 +5,7 @@
 ## 功能
 
 - Android TV 原生启动入口，包名 `com.jing.whaletv`，最低 Android 8.0。
-- 默认拉取 `https://iptv-org.github.io/iptv/countries/cn.m3u`（中国频道源），并按央视、卫视、地方、新闻、体育、音乐、娱乐、电影、少儿、纪录片等分区展示。
+- 默认拉取 `https://iptv-org.github.io/iptv/index.m3u`（全球频道源），并按国家、综合、新闻、体育、音乐、娱乐、电影、少儿、纪录片等分区展示。
 - Room 本地缓存频道、备用源、收藏、最近观看、节目单和播放健康状态。
 - OkHttp 同步支持 ETag / Last-Modified，刷新失败时继续使用旧缓存。
 - WorkManager 自动刷新频道和可选 XMLTV 节目单。
