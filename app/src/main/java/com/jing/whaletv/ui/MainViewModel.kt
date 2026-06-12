@@ -7,8 +7,10 @@ import com.jing.whaletv.core.AppContainer
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.isPlayable
+import com.jing.whaletv.data.model.playbackStreams
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +28,7 @@ data class HomeUiState(
     val syncSummary: SyncSummary = SyncSummary(),
     val isRefreshing: Boolean = false,
     val message: String? = null,
+    val playingChannelId: String? = null,
 )
 
 private data class UiPartialState(
@@ -33,6 +36,7 @@ private data class UiPartialState(
     val syncSummary: SyncSummary,
     val isRefreshing: Boolean = false,
     val message: String? = null,
+    val playingChannelId: String? = null,
 )
 
 class MainViewModel(
@@ -40,6 +44,7 @@ class MainViewModel(
 ) : ViewModel() {
     private val isRefreshing = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
+    private val playingChannelId = MutableStateFlow<String?>(null)
     private val syncMutex = Mutex()
 
     private val uiSource: StateFlow<UiPartialState> = combine(
@@ -54,6 +59,8 @@ class MainViewModel(
         base.copy(isRefreshing = refreshing)
     }.combine(message) { base, msg ->
         base.copy(message = msg)
+    }.combine(playingChannelId) { base, channelId ->
+        base.copy(playingChannelId = channelId)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -67,6 +74,7 @@ class MainViewModel(
                 syncSummary = state.syncSummary,
                 isRefreshing = state.isRefreshing,
                 message = state.message,
+                playingChannelId = state.playingChannelId,
             )
         }
         .flowOn(Dispatchers.Default)
@@ -89,6 +97,42 @@ class MainViewModel(
                 failurePrefix = "刷新失败",
             )
         }
+    }
+
+    fun openChannel(channelId: String) {
+        val channel = uiState.value.channels.firstOrNull { it.id == channelId }
+        if (channel == null || channel.playbackStreams().isEmpty()) {
+            showMessage("频道暂无可播放源")
+            return
+        }
+        playingChannelId.value = channelId
+    }
+
+    fun closePlayer() {
+        playingChannelId.value = null
+    }
+
+    fun toggleFavorite(channelId: String, isFavorite: Boolean) {
+        viewModelScope.launch {
+            container.channelRepository.setChannelFavorite(channelId, isFavorite)
+            showMessage(if (isFavorite) "已加入收藏" else "已取消收藏")
+        }
+    }
+
+    fun markPlaybackReady(channelId: String, streamUrl: String) {
+        viewModelScope.launch {
+            container.channelRepository.markPlaybackReady(channelId, streamUrl)
+        }
+    }
+
+    fun markPlaybackFailed(channelId: String, streamUrl: String) {
+        viewModelScope.launch {
+            container.channelRepository.markPlaybackFailed(channelId, streamUrl)
+        }
+    }
+
+    fun showUnavailableFeature(name: String) {
+        showMessage("$name 功能开发中")
     }
 
     private fun syncIfCacheEmpty() {
@@ -135,8 +179,19 @@ class MainViewModel(
         }
     }
 
+    private fun showMessage(text: String) {
+        viewModelScope.launch {
+            message.value = text
+            delay(MESSAGE_TIMEOUT_MS)
+            if (message.value == text) {
+                message.value = null
+            }
+        }
+    }
+
     private companion object {
         const val STARTUP_STREAM_PRECHECK_WAIT_MS = 8_000L
+        const val MESSAGE_TIMEOUT_MS = 3_000L
     }
 }
 

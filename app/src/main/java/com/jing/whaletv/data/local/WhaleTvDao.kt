@@ -85,6 +85,12 @@ interface ChannelDao {
     @Query("UPDATE channels SET isAvailable = :isAvailable WHERE id = :channelId")
     suspend fun setChannelAvailability(channelId: String, isAvailable: Boolean)
 
+    @Query("UPDATE channels SET isFavorite = :isFavorite WHERE id = :channelId")
+    suspend fun setChannelFavorite(channelId: String, isFavorite: Boolean)
+
+    @Query("UPDATE channels SET lastWatchedAt = :watchedAt WHERE id = :channelId")
+    suspend fun setChannelLastWatchedAt(channelId: String, watchedAt: Long)
+
     @Query("UPDATE streams SET healthStatus = :unknownStatus WHERE healthStatus = :unhealthyStatus")
     suspend fun resetUnhealthyStreams(unhealthyStatus: String, unknownStatus: String)
 

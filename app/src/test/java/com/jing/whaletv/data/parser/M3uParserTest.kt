@@ -44,6 +44,17 @@ class M3uParserTest {
     }
 
     @Test
+    fun parseXmltvUrl_readsPlaylistHeaderGuideUrl() {
+        val m3u = """
+            #EXTM3U x-tvg-url="https://example.com/guide.xml.gz"
+            #EXTINF:-1 tvg-id="News.cn@SD" group-title="News",News Channel
+            https://media.example.com/live.m3u8
+        """.trimIndent()
+
+        assertEquals("https://example.com/guide.xml.gz", parser.parseXmltvUrl(m3u))
+    }
+
+    @Test
     fun parse_prioritizesSatelliteBeforeOtherChannels() {
         val m3u = """
             #EXTM3U

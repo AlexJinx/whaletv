@@ -13,6 +13,7 @@ import com.jing.whaletv.data.model.Program
 import com.jing.whaletv.data.model.StreamHealth
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
+import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.data.network.FetchResult
 import com.jing.whaletv.data.network.PlaylistClient
 import com.jing.whaletv.data.parser.M3uParser
@@ -90,6 +91,37 @@ class ChannelRepository(
         ) > 0
     }
 
+    suspend fun setChannelFavorite(channelId: String, isFavorite: Boolean) = withContext(Dispatchers.Default) {
+        channelDao.setChannelFavorite(channelId, isFavorite)
+    }
+
+    suspend fun markPlaybackReady(channelId: String, streamUrl: String) = withContext(Dispatchers.Default) {
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            channelDao.updateStreamSuccess(
+                channelId = channelId,
+                url = streamUrl,
+                healthStatus = StreamHealth.HEALTHY.name,
+                successAt = now,
+            )
+            channelDao.setChannelLastWatchedAt(channelId, now)
+            channelDao.setChannelAvailability(channelId, true)
+        }
+    }
+
+    suspend fun markPlaybackFailed(channelId: String, streamUrl: String) = withContext(Dispatchers.Default) {
+        database.withTransaction {
+            val current = channelDao.getStream(channelId, streamUrl) ?: return@withTransaction
+            channelDao.updateStreamFailure(
+                channelId = channelId,
+                url = streamUrl,
+                healthStatus = StreamHealth.UNKNOWN.name,
+                failureCount = current.failureCount + 1,
+                failedAt = System.currentTimeMillis(),
+            )
+        }
+    }
+
     suspend fun syncPlaylists() = withContext(Dispatchers.Default) {
         playlistSyncMutex.withLock {
             val settings = settingsRepository.settings.first()
@@ -113,6 +145,9 @@ class ChannelRepository(
                         is FetchResult.Success -> {
                             successCount += 1
                             saveHttpCacheHeaders(source.cacheKey(), result)
+                            m3uParser.parseXmltvUrl(result.body)?.let { xmltvUrl ->
+                                setState(KEY_DISCOVERED_EPG_URL, xmltvUrl)
+                            }
                             parsed += m3uParser.parse(result.body)
                         }
                     }
@@ -139,14 +174,17 @@ class ChannelRepository(
 
     suspend fun syncEpg() = withContext(Dispatchers.Default) {
         val settings = settingsRepository.settings.first()
-        if (settings.xmltvUrl.isBlank()) return@withContext
+        val xmltvUrl = settings.xmltvUrl.ifBlank {
+            syncStateDao.getValue(KEY_DISCOVERED_EPG_URL).orEmpty()
+        }
+        if (xmltvUrl.isBlank()) return@withContext
 
         try {
             val channelIds = channelDao.getAllChannels().map { it.id }.toSet()
             if (channelIds.isEmpty()) return@withContext
 
             val result = playlistClient.fetchText(
-                url = settings.xmltvUrl,
+                url = xmltvUrl,
                 etag = syncStateDao.getValue("$KEY_EPG.etag"),
                 lastModified = syncStateDao.getValue("$KEY_EPG.last_modified"),
             )
@@ -200,7 +238,7 @@ class ChannelRepository(
         }
     }
 
-    private suspend fun probeStartupStream(stream: com.jing.whaletv.data.model.TvStream) {
+    private suspend fun probeStartupStream(stream: TvStream) {
         if (!isProbeSupported(stream.url)) return
         if (probeStreamReachable(stream)) {
             markStreamSucceeded(stream)
@@ -209,7 +247,7 @@ class ChannelRepository(
         }
     }
 
-    private suspend fun markStreamStartupProbeFailed(stream: com.jing.whaletv.data.model.TvStream) {
+    private suspend fun markStreamStartupProbeFailed(stream: TvStream) {
         database.withTransaction {
             val currentEntity = channelDao.getStream(stream.channelId, stream.url)
             val nextFailureCount = ((currentEntity?.failureCount ?: stream.failureCount) + 1).coerceAtLeast(1)
@@ -243,7 +281,7 @@ class ChannelRepository(
         }
     }
 
-    private suspend fun probeStreamReachable(stream: com.jing.whaletv.data.model.TvStream): Boolean {
+    private suspend fun probeStreamReachable(stream: TvStream): Boolean {
         return runCatching {
             withContext(Dispatchers.IO) {
                 startupProbeClient.newCall(buildProbeRequest(stream)).execute().use { response ->
@@ -253,7 +291,7 @@ class ChannelRepository(
         }.getOrDefault(false)
     }
 
-    private fun buildProbeRequest(stream: com.jing.whaletv.data.model.TvStream): Request {
+    private fun buildProbeRequest(stream: TvStream): Request {
         val requestBuilder = Request.Builder()
             .url(stream.url)
             .get()
@@ -269,7 +307,7 @@ class ChannelRepository(
         }.getOrDefault(null) in setOf("http", "https")
     }
 
-    private suspend fun markStreamSucceeded(stream: com.jing.whaletv.data.model.TvStream) {
+    private suspend fun markStreamSucceeded(stream: TvStream) {
         database.withTransaction {
             channelDao.updateStreamSuccess(
                 channelId = stream.channelId,
@@ -386,6 +424,7 @@ class ChannelRepository(
         const val KEY_EPG = "epg"
         const val KEY_EPG_SUCCESS = "epg.last_success_at"
         const val KEY_EPG_ERROR = "epg.last_error"
+        const val KEY_DISCOVERED_EPG_URL = "epg.discovered_url"
         const val ONE_HOUR_MS = 60 * 60 * 1000L
         const val STARTUP_STREAM_PRECHECK_TIMEOUT_MS = 1_000L
         const val STARTUP_STREAM_PRECHECK_CONCURRENCY = 4

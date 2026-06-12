@@ -48,8 +48,6 @@ const channels: Channel[] = [
 function ChannelLogoBlock({ channel, isFocused }: { channel: Channel; isFocused: boolean }) {
   const isCCTV = channel.logo.startsWith('CCTV') || channel.logo === 'CCTV新闻';
   const isCGTN = channel.logo === 'CGTN';
-  const isXinhua = channel.logo === '新华社';
-  const isFenghuang = channel.logo === '凤凰资讯';
 
   return (
     <div
@@ -73,15 +71,7 @@ function ChannelLogoBlock({ channel, isFocused }: { channel: Channel; isFocused:
         style={{
           width: '108px',
           height: '78px',
-          background: isCCTV
-            ? 'linear-gradient(135deg, #1a2540 0%, #0f1a30 100%)'
-            : isCGTN
-            ? 'linear-gradient(135deg, #1a2030 0%, #0f1828 100%)'
-            : isXinhua
-            ? 'linear-gradient(135deg, #251818 0%, #1a0e0e 100%)'
-            : isFenghuang
-            ? 'linear-gradient(135deg, #251a10 0%, #1a1008 100%)'
-            : 'linear-gradient(135deg, #1a2030 0%, #0f1828 100%)',
+          background: 'linear-gradient(135deg, #1a2540 0%, #0f1a30 100%)',
           border: isFocused
             ? '1px solid rgba(0,200,212,0.35)'
             : '1px solid rgba(255,255,255,0.06)',
@@ -99,18 +89,8 @@ function ChannelLogoBlock({ channel, isFocused }: { channel: Channel; isFocused:
           </div>
         ) : isCGTN ? (
           <span style={{ color: '#c8e0ff', fontSize: '20px', fontWeight: 800, letterSpacing: '0.08em' }}>CGTN</span>
-        ) : isXinhua ? (
-          <div className="flex flex-col items-center gap-0.5">
-            <span style={{ color: '#ffb0a0', fontSize: '18px', fontWeight: 700, letterSpacing: '0.04em' }}>新华社</span>
-            <span style={{ color: '#ff8870', fontSize: '9px', letterSpacing: '0.12em', opacity: 0.6 }}>XINHUA</span>
-          </div>
-        ) : isFenghuang ? (
-          <div className="flex flex-col items-center gap-0.5">
-            <span style={{ color: '#ffcc80', fontSize: '16px', fontWeight: 700 }}>凤凰资讯</span>
-            <span style={{ color: '#ffaa40', fontSize: '9px', letterSpacing: '0.1em', opacity: 0.6 }}>PHOENIXTV</span>
-          </div>
         ) : (
-          <span style={{ color: '#c8d8f0', fontSize: '18px', fontWeight: 700 }}>{channel.logo}</span>
+          <span style={{ color: '#e8f0ff', fontSize: '18px', fontWeight: 700 }}>{channel.logo}</span>
         )}
       </div>
 

@@ -6,6 +6,17 @@ import java.text.Normalizer
 import java.util.Locale
 
 class M3uParser {
+    fun parseXmltvUrl(content: String): String? {
+        val header = content.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("#EXTM3U", ignoreCase = true) }
+            ?: return null
+        return parseAttributes(header)["x-tvg-url"]
+            ?.split(',', ';')
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true) }
+    }
+
     fun parse(content: String): List<ParsedChannel> {
         groupByChannel.clear()
         logoByChannel.clear()
@@ -35,7 +46,7 @@ class M3uParser {
                 }
                 line.isBlank() || line.startsWith("#") -> Unit
                 pendingInfo != null -> {
-                    val info = pendingInfo ?: return@forEach
+                    val info = pendingInfo
                     streams += ParsedStream(
                         channelId = info.id,
                         url = line,
@@ -75,7 +86,7 @@ class M3uParser {
     private val nameByChannel = mutableMapOf<String, String>()
 
     private fun parseInfo(line: String): PendingInfo {
-        val attrs = attributeRegex.findAll(line).associate { it.groupValues[1] to it.groupValues[2] }
+        val attrs = parseAttributes(line)
         val rawName = line.substringAfterLast(",", "").trim()
         val cleanName = sanitizeName(rawName)
         val rawId = attrs["tvg-id"].orEmpty()
@@ -94,6 +105,10 @@ class M3uParser {
             quality = quality,
             label = label,
         )
+    }
+
+    private fun parseAttributes(line: String): Map<String, String> {
+        return attributeRegex.findAll(line).associate { it.groupValues[1] to it.groupValues[2] }
     }
 
     private fun channelNameFromId(id: String): String = nameByChannel[id] ?: id.substringBefore(".")

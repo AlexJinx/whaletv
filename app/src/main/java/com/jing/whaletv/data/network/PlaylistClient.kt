@@ -1,8 +1,11 @@
 package com.jing.whaletv.data.network
 
 import com.jing.whaletv.core.AppConstants
+import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -30,8 +33,16 @@ class PlaylistClient(
             when {
                 response.code == 304 -> FetchResult.NotModified
                 response.isSuccessful -> {
-                    val body = response.body?.string()
-                        ?: throw IOException("Empty response body")
+                    val responseBody = response.body
+                    val contentType = responseBody.contentType()
+                    val bytes = responseBody.bytes()
+                    val decodedBytes = if (bytes.isGzipEncoded()) {
+                        GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
+                    } else {
+                        bytes
+                    }
+                    val charset = contentType?.charset(StandardCharsets.UTF_8) ?: StandardCharsets.UTF_8
+                    val body = decodedBytes.toString(charset)
                     FetchResult.Success(
                         body = body,
                         etag = response.header("ETag"),
@@ -51,6 +62,10 @@ class PlaylistClient(
             .retryOnConnectionFailure(true)
             .build()
     }
+}
+
+private fun ByteArray.isGzipEncoded(): Boolean {
+    return size >= 2 && this[0] == 0x1F.toByte() && this[1] == 0x8B.toByte()
 }
 
 sealed interface FetchResult {

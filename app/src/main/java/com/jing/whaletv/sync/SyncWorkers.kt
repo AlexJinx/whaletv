@@ -84,15 +84,21 @@ object SyncScheduler {
     }
 
     fun enqueueImmediate(context: Context) {
-        val request = OneTimeWorkRequestBuilder<PlaylistSyncWorker>()
+        val playlistRequest = OneTimeWorkRequestBuilder<PlaylistSyncWorker>()
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 2, TimeUnit.MINUTES)
             .build()
+        val epgRequest = OneTimeWorkRequestBuilder<EpgSyncWorker>()
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+            .build()
 
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            PLAYLIST_IMMEDIATE,
-            ExistingWorkPolicy.KEEP,
-            request,
-        )
+        WorkManager.getInstance(context)
+            .beginUniqueWork(
+                PLAYLIST_IMMEDIATE,
+                ExistingWorkPolicy.KEEP,
+                playlistRequest,
+            )
+            .then(epgRequest)
+            .enqueue()
     }
 
     fun cancelPeriodic(context: Context) {

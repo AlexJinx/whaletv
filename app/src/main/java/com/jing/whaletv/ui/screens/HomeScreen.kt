@@ -56,15 +56,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -83,8 +86,6 @@ import com.jing.whaletv.ui.homeChannelsForCategory
 import com.jing.whaletv.ui.homeCountryId
 import com.jing.whaletv.ui.homeFavoriteChannels
 import com.jing.whaletv.ui.homeHistoryChannels
-import com.jing.whaletv.ui.homeLogoPrimaryText
-import com.jing.whaletv.ui.homeLogoSecondaryText
 import com.jing.whaletv.ui.homePlayableSourceCount
 import com.jing.whaletv.ui.homeQualityLabel
 import com.jing.whaletv.ui.theme.WhaleTokens
@@ -96,14 +97,15 @@ import java.time.format.DateTimeFormatter
 private const val HOME_MODE_BROWSE = "browse"
 private const val HOME_MODE_FAVORITES = "favorites"
 private const val HOME_MODE_HISTORY = "history"
+private const val HOME_GRID_VISIBLE_ROWS = 3
 private val HomeGridGap = 20.dp
+private val CctvLogoLabelPattern = Regex("""CCTV[\s\-+]*([0-9]{1,2}|新闻|英语|E)""", RegexOption.IGNORE_CASE)
 
 private data class HomeCardItem(
     val key: String,
     val title: String,
     val categoryLabel: String,
-    val logoPrimaryText: String,
-    val logoSecondaryText: String?,
+    val logoLabel: String,
     val qualityLabel: String?,
     val sourceCount: Int,
     val hasEpg: Boolean,
@@ -115,6 +117,8 @@ private data class HomeCardItem(
 fun HomeScreen(
     state: HomeUiState,
     onRefresh: () -> Unit,
+    onChannelSelected: (String) -> Unit,
+    onUnavailableFeature: (String) -> Unit,
 ) {
     var selectedCountry by rememberSaveable { mutableStateOf("cn") }
     var selectedCategory by rememberSaveable { mutableStateOf("news") }
@@ -165,10 +169,10 @@ fun HomeScreen(
                 isRefreshing = state.isRefreshing,
                 message = state.message,
                 activeMode = contentMode,
-                onSearch = {},
+                onSearch = { onUnavailableFeature("搜索") },
                 onFavorites = { contentMode = HOME_MODE_FAVORITES },
                 onHistory = { contentMode = HOME_MODE_HISTORY },
-                onSettings = {},
+                onSettings = { onUnavailableFeature("设置") },
             )
             if (state.isRefreshing) {
                 LinearProgressIndicator(
@@ -181,6 +185,7 @@ fun HomeScreen(
             }
             CountryTabBar(
                 selectedCountry = selectedCountry,
+                onEdit = { onUnavailableFeature("国家编辑") },
                 onCountrySelected = {
                     selectedCountry = it
                     contentMode = HOME_MODE_BROWSE
@@ -202,6 +207,7 @@ fun HomeScreen(
                     lastSyncAt = state.syncSummary.playlistLastSuccessAt,
                     isGlobalMode = contentMode != HOME_MODE_BROWSE,
                     cardItems = visibleItems,
+                    onChannelSelected = onChannelSelected,
                     onRefresh = onRefresh,
                 )
             }
@@ -223,9 +229,9 @@ private fun GlobalTopBar(
 ) {
     val statusText = when {
         isRefreshing -> "正在同步"
+        message != null -> message
         syncSummary.playlistLastError != null -> "同步失败"
         syncSummary.playlistLastSuccessAt != null -> "已同步"
-        message != null -> message
         else -> "等待同步"
     }
     val statusColor = when {
@@ -240,7 +246,6 @@ private fun GlobalTopBar(
             .fillMaxWidth()
             .height(52.dp)
             .background(WhaleTokens.Sidebar)
-            .border(1.dp, Color.White.copy(alpha = 0.05f))
             .padding(horizontal = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -319,6 +324,7 @@ private fun TopBarAction(
 @Composable
 private fun CountryTabBar(
     selectedCountry: String,
+    onEdit: () -> Unit,
     onCountrySelected: (String) -> Unit,
 ) {
     Row(
@@ -326,7 +332,14 @@ private fun CountryTabBar(
             .fillMaxWidth()
             .height(56.dp)
             .background(WhaleTokens.Sidebar)
-            .border(1.dp, Color.White.copy(alpha = 0.04f))
+            .drawBehind {
+                drawLine(
+                    color = WhaleTokens.SurfaceRaised,
+                    start = Offset.Zero,
+                    end = Offset(size.width, 0f),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
             .padding(horizontal = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -338,7 +351,7 @@ private fun CountryTabBar(
                 onClick = { onCountrySelected(country.id) },
             )
         }
-        CountryEditButton()
+        CountryEditButton(onClick = onEdit)
     }
 }
 
@@ -385,12 +398,13 @@ private fun CountryTab(
 }
 
 @Composable
-private fun CountryEditButton() {
+private fun CountryEditButton(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .height(40.dp)
             .clip(RoundedCornerShape(6.dp))
             .focusable()
+            .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -546,8 +560,7 @@ private fun xinhuaPlaceholderItem(): HomeCardItem {
         key = "placeholder.xinhua.cn",
         title = "新华社电视",
         categoryLabel = "新闻",
-        logoPrimaryText = "新华社",
-        logoSecondaryText = "XINHUA",
+        logoLabel = "新华社",
         qualityLabel = "高清",
         sourceCount = 1,
         hasEpg = true,
@@ -561,8 +574,7 @@ private fun TvChannel.toHomeCardItem(): HomeCardItem {
         key = id,
         title = homeCardTitle(),
         categoryLabel = homeCategoryLabel(),
-        logoPrimaryText = homeLogoPrimaryText(),
-        logoSecondaryText = homeLogoSecondaryText(),
+        logoLabel = homeLogoLabel(),
         qualityLabel = homeQualityLabel(),
         sourceCount = homePlayableSourceCount(),
         hasEpg = currentProgram != null || nextProgram != null,
@@ -623,6 +635,27 @@ private fun TvChannel.homeCardTitle(): String {
     }
 }
 
+private fun TvChannel.homeLogoLabel(): String {
+    val title = homeCardTitle().trim()
+    title.toCctvLogoLabel()?.let { return it }
+
+    val normalized = title
+        .replace("高清", "")
+        .replace("频道", "")
+        .trim()
+    return when {
+        normalized.equals("CGTN", ignoreCase = true) -> "CGTN"
+        normalized.contains("新华社") -> "新华社"
+        normalized.contains("凤凰") -> "凤凰资讯"
+        else -> normalized.ifBlank { name.trim() }
+    }
+}
+
+private fun String.toCctvLogoLabel(): String? {
+    val suffix = CctvLogoLabelPattern.find(this)?.groupValues?.getOrNull(1) ?: return null
+    return if (suffix.equals("E", ignoreCase = true)) "CCTV-英语" else "CCTV-$suffix"
+}
+
 @Composable
 private fun ChannelContent(
     title: String,
@@ -630,6 +663,7 @@ private fun ChannelContent(
     lastSyncAt: Long?,
     isGlobalMode: Boolean,
     cardItems: List<HomeCardItem>,
+    onChannelSelected: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
     val firstItemKey = cardItems.firstOrNull()?.key
@@ -694,7 +728,8 @@ private fun ChannelContent(
             EmptyHomeState(modifier = Modifier.fillMaxSize())
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val cardHeight = ((maxHeight - HomeGridGap) / 2).coerceAtLeast(1.dp)
+                val cardHeight = ((maxHeight - HomeGridGap * (HOME_GRID_VISIBLE_ROWS - 1)) / HOME_GRID_VISIBLE_ROWS)
+                    .coerceAtLeast(1.dp)
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     modifier = Modifier.fillMaxSize(),
@@ -712,6 +747,7 @@ private fun ChannelContent(
                             item = item,
                             highlighted = item.key == highlightedCardKey,
                             onFocused = { highlightedCardKey = item.key },
+                            onClick = { onChannelSelected(item.key) },
                             modifier = cardModifier
                                 .fillMaxWidth()
                                 .height(cardHeight),
@@ -728,6 +764,7 @@ private fun HomeChannelCard(
     item: HomeCardItem,
     highlighted: Boolean,
     onFocused: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -755,7 +792,7 @@ private fun HomeChannelCard(
                 }
             }
             .focusable()
-            .clickable(onClick = {}),
+            .clickable(onClick = onClick),
     ) {
         ChannelLogoPanel(
             item = item,
@@ -765,43 +802,40 @@ private fun HomeChannelCard(
                 .fillMaxWidth()
                 .height(130.dp),
         )
-        BoxWithConstraints(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .background(WhaleTokens.SurfaceRaised)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            val showNowPlaying = maxHeight >= 104.dp
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = item.title,
-                    color = if (active) Color(0xFFE8F4F5) else Color(0xFFD0DCE8),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            Text(
+                text = item.title,
+                color = if (active) Color(0xFFE8F4F5) else Color(0xFFD0DCE8),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = item.categoryLabel,
+                color = Color(0xFF7A8EAA),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+            item.currentProgramTitle?.let { current ->
+                NowPlayingRow(
+                    title = current,
+                    modifier = Modifier
+                        .padding(top = 10.dp)
+                        .fillMaxWidth(),
                 )
-                Text(
-                    text = item.categoryLabel,
-                    color = Color(0xFF7A8EAA),
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                ChannelMetaRow(item)
-                if (active && showNowPlaying) {
-                    item.currentProgramTitle?.let { current ->
-                        Text(
-                            text = "• 正在播出：$current",
-                            color = Color(0xFF5FC8B8),
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
             }
+            Spacer(Modifier.weight(1f))
+            ChannelMetaRow(item)
         }
     }
 }
@@ -851,14 +885,20 @@ private fun ChannelLogoPanel(
 
 @Composable
 private fun LogoBadge(item: HomeCardItem, focused: Boolean) {
-    val isXinhua = item.logoPrimaryText.contains("新华社") || item.title.contains("新华社")
-    val isFenghuang = item.logoPrimaryText.contains("凤凰") || item.title.contains("凤凰")
-    val badgeBrush = when {
-        isXinhua -> Brush.linearGradient(listOf(Color(0xFF251818), Color(0xFF1A0E0E)))
-        isFenghuang -> Brush.linearGradient(listOf(Color(0xFF251A10), Color(0xFF1A1008)))
-        else -> Brush.linearGradient(listOf(Color(0xFF1A2540), Color(0xFF0F1A30)))
+    val label = item.logoLabel
+    val badgeBrush = Brush.linearGradient(listOf(Color(0xFF1A2540), Color(0xFF0F1A30)))
+    val labelColor = when {
+        label.equals("CGTN", ignoreCase = true) -> Color(0xFFC8E0FF)
+        else -> Color(0xFFE8F0FF)
     }
-    Column(
+    val labelFontSize = when {
+        label.equals("CGTN", ignoreCase = true) -> 20.sp
+        label.length <= 4 -> 18.sp
+        label.length <= 7 -> 17.sp
+        else -> 15.sp
+    }
+
+    Box(
         modifier = Modifier
             .width(108.dp)
             .height(78.dp)
@@ -868,96 +908,94 @@ private fun LogoBadge(item: HomeCardItem, focused: Boolean) {
                 1.dp,
                 if (focused) WhaleTokens.Cyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.06f),
                 RoundedCornerShape(12.dp),
-            ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            )
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        val primaryText = item.logoPrimaryText
-        val secondaryText = item.logoSecondaryText
-        when {
-            isXinhua -> {
-                Text(
-                    text = primaryText,
-                    color = Color(0xFFFFB0A0),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = secondaryText ?: "XINHUA",
-                    color = Color(0xFFFF8870),
-                    fontSize = 9.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            isFenghuang -> {
-                Text(
-                    text = primaryText,
-                    color = Color(0xFFFFCC80),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = secondaryText ?: "PHOENIXTV",
-                    color = Color(0xFFFFAA40),
-                    fontSize = 9.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            else -> {
-                secondaryText?.let {
-                    Text(
-                        text = it,
-                        color = Color(0xFFC8D4E8).copy(alpha = 0.7f),
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    text = primaryText,
-                    color = if (primaryText.equals("CGTN", ignoreCase = true)) Color(0xFFC8E0FF) else Color(0xFFE8F0FF),
-                    fontSize = when {
-                        primaryText.equals("CGTN", ignoreCase = true) -> 20.sp
-                        primaryText.length <= 2 -> 22.sp
-                        else -> 18.sp
-                    },
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+        Text(
+            text = label,
+            color = labelColor,
+            fontSize = labelFontSize,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun NowPlayingRow(title: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(Color(0xFF5FC8B8).copy(alpha = 0.09f))
+            .border(1.dp, Color(0xFF5FC8B8).copy(alpha = 0.14f), RoundedCornerShape(7.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(5.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFF5FC8B8)),
+        )
+        Text(
+            text = "正在播出：$title",
+            color = Color(0xFF8FE3D8),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
 @Composable
 private fun ChannelMetaRow(item: HomeCardItem) {
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        ChannelMetaChip(text = "可用", dotColor = WhaleTokens.Green, textColor = Color(0xFF7ACEA0))
+        ChannelMetaChip(text = "${item.sourceCount} 个源")
+        if (item.hasEpg) {
+            ChannelMetaChip(text = "EPG", showCalendar = true)
+        }
+    }
+}
+
+@Composable
+private fun ChannelMetaChip(
+    text: String,
+    dotColor: Color? = null,
+    textColor: Color = Color(0xFF8899BB),
+    showCalendar: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.White.copy(alpha = 0.045f))
+            .border(1.dp, Color.White.copy(alpha = 0.055f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        dotColor?.let {
             Box(
                 modifier = Modifier
                     .size(6.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(WhaleTokens.Green),
+                    .background(it),
             )
-            Text("可用", color = Color(0xFF7ACEA0), fontSize = 12.sp)
         }
-        Text("${item.sourceCount} 个源", color = Color(0xFF8899BB), fontSize = 12.sp)
-        if (item.hasEpg) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF8899BB), modifier = Modifier.size(12.dp))
-                Text("EPG", color = Color(0xFF8899BB), fontSize = 12.sp)
-            }
+        if (showCalendar) {
+            Icon(Icons.Default.CalendarToday, contentDescription = null, tint = textColor, modifier = Modifier.size(12.dp))
         }
+        Text(text, color = textColor, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }
 

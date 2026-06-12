@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Color
 object WhaleTokens {
     val Background = Color(0xFF0D0F12)
     val BackgroundDeep = Color(0xFF050709)
-    val Sidebar = Color(0xFF0F1218)
+    val Sidebar = Color(0xFF151921)
     val Surface = Color(0xFF13171F)
     val SurfaceRaised = Color(0xFF1C2233)
     val Muted = Color(0xFF1A2030)
