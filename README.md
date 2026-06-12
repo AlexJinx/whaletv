@@ -17,7 +17,7 @@
 - 旧播放器、搜索页、设置页、EPG 页。
 - 旧通用频道卡片和 TV 控件组件。
 - libVLC 播放依赖和旧 AndroidX TV UI 依赖。
-- 旧设计目录 `design/Whale TV Android TV UI/`。
+- 旧版多页面设计源。
 
 ## 设计源
 
