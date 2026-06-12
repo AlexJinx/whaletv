@@ -3,6 +3,7 @@ package com.jing.whaletv.ui
 import androidx.compose.ui.graphics.Color
 import com.jing.whaletv.data.model.ChannelSortMode
 import com.jing.whaletv.data.model.Program
+import com.jing.whaletv.data.model.StreamHealth
 import com.jing.whaletv.data.model.isPlayable
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.parser.ChannelClassifier
@@ -16,6 +17,38 @@ import kotlin.math.absoluteValue
 data class TvNavSection(
     val id: String,
     val label: String,
+)
+
+data class HomeCountryTabSpec(
+    val id: String,
+    val label: String,
+    val locked: Boolean = false,
+)
+
+val HomeCountryTabs = listOf(
+    HomeCountryTabSpec("cn", "中国", locked = true),
+    HomeCountryTabSpec("us", "美国"),
+    HomeCountryTabSpec("jp", "日本"),
+    HomeCountryTabSpec("uk", "英国"),
+    HomeCountryTabSpec("kr", "韩国"),
+)
+
+data class HomeCategorySpec(
+    val id: String,
+    val label: String,
+)
+
+val HomeCategorySpecs = listOf(
+    HomeCategorySpec("all", "全部"),
+    HomeCategorySpec("general", "综合"),
+    HomeCategorySpec("news", "新闻"),
+    HomeCategorySpec("sports", "体育"),
+    HomeCategorySpec("movie", "电影"),
+    HomeCategorySpec("music", "音乐"),
+    HomeCategorySpec("kids", "少儿"),
+    HomeCategorySpec("documentary", "纪录片"),
+    HomeCategorySpec("entertainment", "娱乐"),
+    HomeCategorySpec("uncategorized", "未分类"),
 )
 
 val TvNavSections = listOf(
@@ -76,6 +109,14 @@ private val INTERNATIONAL_COUNTRY_PRIORITY = listOf(
     "哥伦比亚",
     "阿曼",
     "尼泊尔",
+)
+
+private val homeCountryLabelToId = mapOf(
+    "中国" to "cn",
+    "美国" to "us",
+    "日本" to "jp",
+    "英国" to "uk",
+    "韩国" to "kr",
 )
 
 private val internationalCountryNameHints = mapOf(
@@ -146,6 +187,112 @@ private val internationalCountryNameHints = mapOf(
 )
 
 private val isoCountryCodeLookup = Locale.getISOCountries().toSet()
+
+fun TvChannel.homeCountryId(): String {
+    val idSuffix = id.substringAfterLast('.', "").lowercase(Locale.ROOT).trim('.')
+    val suffixCountry = normalizeCountryCandidate(idSuffix)
+    val resolvedCountry = suffixCountry ?: resolveCountryFromText("$id $name $groupTitle")
+    resolvedCountry?.let { country ->
+        homeCountryLabelToId[country]?.let { return it }
+    }
+    return if (
+        idSuffix == "cn" ||
+        id.lowercase(Locale.ROOT).contains(".cn") ||
+        hasChineseChars("$name $groupTitle")
+    ) {
+        "cn"
+    } else {
+        "other"
+    }
+}
+
+fun TvChannel.homeCountryLabel(): String {
+    return HomeCountryTabs.firstOrNull { it.id == homeCountryId() }?.label ?: INTERNATIONAL_OTHER_COUNTRY
+}
+
+fun TvChannel.homeCategoryId(): String {
+    val primary = groupTitle
+        .split(';', ',', '|', '/', '，')
+        .map { it.trim().lowercase(Locale.ROOT) }
+        .firstOrNull { it.isNotBlank() }
+        ?: return "uncategorized"
+    return when (primary) {
+        "general" -> "general"
+        "news", "public" -> "news"
+        "sports", "sport" -> "sports"
+        "movies", "movie", "cinema", "classic" -> "movie"
+        "music", "radio" -> "music"
+        "kids", "children", "animation", "family" -> "kids"
+        "documentary", "documentaries", "science", "education", "educational" -> "documentary"
+        "entertainment", "comedy", "series" -> "entertainment"
+        "undefined", "unknown", "other", "others" -> "uncategorized"
+        else -> "uncategorized"
+    }
+}
+
+fun TvChannel.homeCategoryLabel(): String {
+    return HomeCategorySpecs.firstOrNull { it.id == homeCategoryId() }?.label ?: "未分类"
+}
+
+fun homeChannelsForCategory(categoryId: String, channels: List<TvChannel>): List<TvChannel> {
+    return if (categoryId == "all") channels else channels.filter { it.homeCategoryId() == categoryId }
+}
+
+fun homeFavoriteChannels(channels: List<TvChannel>): List<TvChannel> {
+    return channels.filter { it.isFavorite }
+}
+
+fun homeHistoryChannels(channels: List<TvChannel>): List<TvChannel> {
+    return channels
+        .filter { it.lastWatchedAt != null }
+        .sortedByDescending { it.lastWatchedAt }
+}
+
+fun TvChannel.homePlayableSourceCount(): Int {
+    return streams.count { it.healthStatus == StreamHealth.HEALTHY || it.healthStatus == StreamHealth.UNKNOWN }
+}
+
+fun TvChannel.homeQualityLabel(): String? {
+    val qualities = streams.mapNotNull { it.quality?.trim() }.filter { it.isNotBlank() }
+    if (qualities.any { it.contains("8K", ignoreCase = true) }) return "8K"
+    if (qualities.any { it.contains("4K", ignoreCase = true) }) return "4K"
+    val hasHd = qualities.any { quality ->
+        val resolution = Regex("""(\d{3,4})[pi]?""", RegexOption.IGNORE_CASE)
+            .find(quality)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+        quality.equals("HD", ignoreCase = true) || resolution != null && resolution >= 720
+    }
+    return if (hasHd) "高清" else null
+}
+
+fun TvChannel.homeLogoPrimaryText(): String {
+    val normalized = name.replace("高清", "").replace("频道", "").trim()
+    return when {
+        id.equals("CCTVPlus1.cn", ignoreCase = true) -> "新闻"
+        id.equals("CCTVPlus2.cn", ignoreCase = true) -> "E"
+        normalized.contains("CGTN", ignoreCase = true) -> "CGTN"
+        normalized.contains("新华社") -> "新华社"
+        normalized.contains("凤凰") -> "凤凰资讯"
+        normalized.contains("CCTV-新闻", ignoreCase = true) || normalized.contains("CCTV新闻", ignoreCase = true) -> "新闻"
+        normalized.contains("CCTV", ignoreCase = true) -> displayNumber()
+        normalized.length >= 4 -> normalized.take(4)
+        normalized.isNotBlank() -> normalized
+        else -> logoText()
+    }
+}
+
+fun TvChannel.homeLogoSecondaryText(): String? {
+    val normalized = name.trim()
+    return when {
+        id.equals("CCTVPlus1.cn", ignoreCase = true) || id.equals("CCTVPlus2.cn", ignoreCase = true) -> "CCTV"
+        normalized.contains("CCTV", ignoreCase = true) -> "CCTV"
+        normalized.contains("新华社") -> "XINHUA"
+        normalized.contains("凤凰") -> "PHOENIXTV"
+        else -> null
+    }
+}
 
 fun TvChannel.resolvedInternationalCountry(): String {
     if (!isInternational()) return INTERNATIONAL_OTHER_COUNTRY

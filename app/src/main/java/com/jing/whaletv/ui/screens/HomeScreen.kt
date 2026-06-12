@@ -4,34 +4,48 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SportsSoccer
+import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -42,42 +56,62 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jing.whaletv.data.model.SyncSummary
-import com.jing.whaletv.data.model.ChannelSection
 import com.jing.whaletv.data.model.TvChannel
+import com.jing.whaletv.ui.HomeCategorySpec
+import com.jing.whaletv.ui.HomeCategorySpecs
+import com.jing.whaletv.ui.HomeCountryTabSpec
+import com.jing.whaletv.ui.HomeCountryTabs
 import com.jing.whaletv.ui.HomeUiState
-import com.jing.whaletv.ui.INTERNATIONAL_ALL_COUNTRIES
-import com.jing.whaletv.ui.INTERNATIONAL_ALL_TYPES
-import com.jing.whaletv.ui.currentProgress
-import com.jing.whaletv.ui.currentTimeRange
 import com.jing.whaletv.ui.currentTitle
-import com.jing.whaletv.ui.formatShortDate
-import com.jing.whaletv.ui.hasEpgData
-import com.jing.whaletv.ui.internationalCountriesForChannels
-import com.jing.whaletv.ui.internationalTypeBucketsForChannels
-import com.jing.whaletv.ui.internationalTypeLabel
-import com.jing.whaletv.ui.resolvedInternationalTypeBucket
-import com.jing.whaletv.ui.logoColor
-import com.jing.whaletv.ui.nextTitle
-import com.jing.whaletv.ui.resolvedInternationalCountry
+import com.jing.whaletv.ui.formatProgramTime
+import com.jing.whaletv.ui.homeCategoryId
+import com.jing.whaletv.ui.homeCategoryLabel
+import com.jing.whaletv.ui.homeChannelsForCategory
+import com.jing.whaletv.ui.homeCountryId
+import com.jing.whaletv.ui.homeFavoriteChannels
+import com.jing.whaletv.ui.homeHistoryChannels
+import com.jing.whaletv.ui.homeLogoPrimaryText
+import com.jing.whaletv.ui.homeLogoSecondaryText
+import com.jing.whaletv.ui.homePlayableSourceCount
+import com.jing.whaletv.ui.homeQualityLabel
 import com.jing.whaletv.ui.theme.WhaleTokens
-import com.jing.whaletv.ui.components.ChannelCard
-import com.jing.whaletv.ui.components.FocusableCard
-import com.jing.whaletv.ui.components.LiveBadge
-import com.jing.whaletv.ui.components.ProgramProgressBar
-import com.jing.whaletv.ui.components.TvIconButton
-import com.jing.whaletv.ui.components.TvTextButton
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+private const val HOME_MODE_BROWSE = "browse"
+private const val HOME_MODE_FAVORITES = "favorites"
+private const val HOME_MODE_HISTORY = "history"
+private val HomeGridGap = 20.dp
+
+private data class HomeCardItem(
+    val key: String,
+    val title: String,
+    val categoryLabel: String,
+    val logoPrimaryText: String,
+    val logoSecondaryText: String?,
+    val qualityLabel: String?,
+    val sourceCount: Int,
+    val hasEpg: Boolean,
+    val currentProgramTitle: String?,
+    val rank: Int,
+    val channel: TvChannel? = null,
+)
 
 @Composable
 fun HomeScreen(
@@ -88,10 +122,10 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    var activeNav by rememberSaveable { mutableStateOf("continue") }
+    var selectedCountry by rememberSaveable { mutableStateOf("cn") }
+    var selectedCategory by rememberSaveable { mutableStateOf("news") }
+    var contentMode by rememberSaveable { mutableStateOf(HOME_MODE_BROWSE) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var selectedInternationalCountry by rememberSaveable { mutableStateOf(INTERNATIONAL_ALL_COUNTRIES) }
-    var selectedInternationalType by rememberSaveable { mutableStateOf(INTERNATIONAL_ALL_TYPES) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -100,208 +134,109 @@ fun HomeScreen(
         }
     }
 
-    val sections = state.sections
-    val channels = state.channels
-    val heroChannel = channels
-        .filter { it.lastWatchedAt != null }
-        .maxByOrNull { it.lastWatchedAt ?: 0L }
-        ?: channels.firstOrNull()
-    LaunchedEffect(sections) {
-        if (sections.none { it.id == activeNav }) {
-            activeNav = sections.firstOrNull()?.id ?: "all"
+    val allChannels = state.channels
+    val countryChannels = remember(allChannels, selectedCountry) {
+        allChannels.filter { it.homeCountryId() == selectedCountry }
+    }
+    val categoryCounts = remember(countryChannels, selectedCountry) {
+        HomeCategorySpecs.associate { category ->
+            category.id to homeGridItemsForCategory(category.id, selectedCountry, countryChannels).size
         }
     }
-    val activeSection = sections.firstOrNull { it.id == activeNav }
-    val baseSectionChannels = remember(activeNav, activeSection) { activeSection?.channels.orEmpty() }
-
-    LaunchedEffect(activeSection) {
-        if (activeSection == null && sections.isNotEmpty()) {
-            activeNav = sections.first().id
+    val currentCategory = HomeCategorySpecs.firstOrNull { it.id == selectedCategory } ?: HomeCategorySpecs[2]
+    val selectedCountryLabel = HomeCountryTabs.firstOrNull { it.id == selectedCountry }?.label ?: "中国"
+    val visibleItems = remember(contentMode, selectedCategory, countryChannels, allChannels) {
+        when (contentMode) {
+            HOME_MODE_FAVORITES -> homeFavoriteChannels(allChannels).map { it.toHomeCardItem() }
+            HOME_MODE_HISTORY -> homeHistoryChannels(allChannels).map { it.toHomeCardItem() }
+            else -> homeGridItemsForCategory(selectedCategory, selectedCountry, countryChannels)
         }
     }
+    val title = when (contentMode) {
+        HOME_MODE_FAVORITES -> "收藏频道"
+        HOME_MODE_HISTORY -> "观看历史"
+        else -> "$selectedCountryLabel · ${currentCategory.label}"
+    }
+    val platformDensity = LocalDensity.current
 
-    val isInternationalSection = activeNav == "international"
-    val internationalCountries = remember(isInternationalSection, baseSectionChannels) {
-        if (isInternationalSection) internationalCountriesForChannels(baseSectionChannels) else emptyList()
-    }
-    val activeInternationalCountry = if (
-        isInternationalSection && selectedInternationalCountry in internationalCountries
-    ) {
-        selectedInternationalCountry
-    } else {
-        INTERNATIONAL_ALL_COUNTRIES
-    }
-    val countryFilteredChannels = if (!isInternationalSection || activeInternationalCountry == INTERNATIONAL_ALL_COUNTRIES) {
-        baseSectionChannels
-    } else {
-        baseSectionChannels.filter { it.resolvedInternationalCountry() == activeInternationalCountry }
-    }
-    val internationalTypeBuckets = remember(isInternationalSection, countryFilteredChannels) {
-        if (isInternationalSection) internationalTypeBucketsForChannels(countryFilteredChannels) else emptyList()
-    }
-    val activeInternationalType = if (
-        isInternationalSection && selectedInternationalType in internationalTypeBuckets
-    ) {
-        selectedInternationalType
-    } else {
-        INTERNATIONAL_ALL_TYPES
-    }
-
-    val filteredChannels = if (!isInternationalSection || activeInternationalType == INTERNATIONAL_ALL_TYPES) {
-        countryFilteredChannels
-    } else {
-        countryFilteredChannels.filter { it.resolvedInternationalTypeBucket() == activeInternationalType }
-    }
-
-    LaunchedEffect(isInternationalSection, activeInternationalCountry, activeInternationalType) {
-        if (isInternationalSection) {
-            if (selectedInternationalCountry != activeInternationalCountry) {
-                selectedInternationalCountry = activeInternationalCountry
+    CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(WhaleTokens.Background),
+        ) {
+            GlobalTopBar(
+                now = now,
+                syncSummary = state.syncSummary,
+                isRefreshing = state.isRefreshing,
+                message = state.message,
+                activeMode = contentMode,
+                onSearch = onSearch,
+                onFavorites = { contentMode = HOME_MODE_FAVORITES },
+                onHistory = { contentMode = HOME_MODE_HISTORY },
+                onSettings = onSettings,
+            )
+            if (state.isRefreshing) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = WhaleTokens.Cyan,
+                    trackColor = WhaleTokens.Surface,
+                )
             }
-            if (selectedInternationalType != activeInternationalType) {
-                selectedInternationalType = activeInternationalType
-            }
-        } else {
-            if (selectedInternationalCountry != INTERNATIONAL_ALL_COUNTRIES) {
-                selectedInternationalCountry = INTERNATIONAL_ALL_COUNTRIES
-            }
-            if (selectedInternationalType != INTERNATIONAL_ALL_TYPES) {
-                selectedInternationalType = INTERNATIONAL_ALL_TYPES
-            }
-        }
-    }
-
-    val countryChips = remember(isInternationalSection, internationalCountries, baseSectionChannels) {
-        if (!isInternationalSection) emptyList() else buildList {
-            val countryCountByName = baseSectionChannels
-                .groupingBy { it.resolvedInternationalCountry() }
-                .eachCount()
-            add("$INTERNATIONAL_ALL_COUNTRIES (${baseSectionChannels.size})" to INTERNATIONAL_ALL_COUNTRIES)
-            addAll(
-                internationalCountries.map { country ->
-                    "$country (${countryCountByName[country] ?: 0})" to country
+            CountryTabBar(
+                selectedCountry = selectedCountry,
+                onCountrySelected = {
+                    selectedCountry = it
+                    contentMode = HOME_MODE_BROWSE
                 },
             )
-        }
-    }
-    val typeChips = remember(isInternationalSection, internationalTypeBuckets, countryFilteredChannels) {
-        if (!isInternationalSection) emptyList() else buildList {
-            val typeCountByBucket = countryFilteredChannels
-                .groupingBy { it.resolvedInternationalTypeBucket() }
-                .eachCount()
-            add("$INTERNATIONAL_ALL_TYPES (${countryFilteredChannels.size})" to INTERNATIONAL_ALL_TYPES)
-            addAll(
-                internationalTypeBuckets.map { bucket ->
-                    "${internationalTypeLabel(bucket)} (${typeCountByBucket[bucket] ?: 0})" to bucket
-                },
-            )
-        }
-    }
-
-    val sectionTitle = activeSection?.title ?: "全部频道"
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(WhaleTokens.Background),
-    ) {
-        HomeTopBar(
-            now = now,
-            message = state.message,
-            isRefreshing = state.isRefreshing,
-            syncSummary = state.syncSummary,
-            onSearch = onSearch,
-            onSettings = onSettings,
-            onRefresh = onRefresh,
-        )
-        if (state.isRefreshing) {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = WhaleTokens.Cyan,
-                trackColor = WhaleTokens.Surface,
-            )
-        }
-        Row(modifier = Modifier.fillMaxSize()) {
-            HomeNavRail(
-                activeNav = activeNav,
-                sections = sections,
-                onSelect = { activeNav = it },
-            )
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 28.dp, vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-            ) {
-                if (heroChannel == null) {
-                    EmptyHomeState()
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        HeroCard(
-                            channel = heroChannel,
-                            now = now,
-                            onClick = { onOpenChannel(heroChannel) },
-                            modifier = Modifier.width(560.dp).height(315.dp),
-                        )
-                        HeroDetailPanel(
-                            channel = heroChannel,
-                            onPlay = { onOpenChannel(heroChannel) },
-                            onDetail = { onOpenDetail(heroChannel) },
-                            modifier = Modifier.weight(1f).height(315.dp),
-                        )
-                    }
-
-                    if (isInternationalSection) {
-                        FilterChipRow(
-                            title = "国家",
-                            chips = countryChips,
-                            selected = activeInternationalCountry,
-                            onSelect = { selectedInternationalCountry = it },
-                        )
-                        FilterChipRow(
-                            title = "类型",
-                            chips = typeChips,
-                            selected = activeInternationalType,
-                            onSelect = { selectedInternationalType = it },
-                        )
-                    }
-
-                    ChannelRows(
-                        title = sectionTitle,
-                        count = filteredChannels.size,
-                        channels = filteredChannels,
-                        onOpenChannel = onOpenChannel,
-                    )
-                }
+            Row(modifier = Modifier.fillMaxSize()) {
+                CategoryRail(
+                    categories = HomeCategorySpecs,
+                    counts = categoryCounts,
+                    selectedCategory = selectedCategory,
+                    onCategorySelected = {
+                        selectedCategory = it
+                        contentMode = HOME_MODE_BROWSE
+                    },
+                )
+                ChannelContent(
+                    title = title,
+                    count = visibleItems.size,
+                    lastSyncAt = state.syncSummary.playlistLastSuccessAt,
+                    isGlobalMode = contentMode != HOME_MODE_BROWSE,
+                    cardItems = visibleItems,
+                    onRefresh = onRefresh,
+                    onOpenChannel = onOpenChannel,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun HomeTopBar(
+private fun GlobalTopBar(
     now: Long,
-    message: String?,
-    isRefreshing: Boolean,
     syncSummary: SyncSummary,
+    isRefreshing: Boolean,
+    message: String?,
+    activeMode: String,
     onSearch: () -> Unit,
+    onFavorites: () -> Unit,
+    onHistory: () -> Unit,
     onSettings: () -> Unit,
-    onRefresh: () -> Unit,
 ) {
-    val statusText = message ?: when {
+    val statusText = when {
         isRefreshing -> "正在同步"
-        syncSummary.playlistLastError != null -> "同步失败：${syncSummary.playlistLastError}"
+        syncSummary.playlistLastError != null -> "同步失败"
         syncSummary.playlistLastSuccessAt != null -> "已同步"
+        message != null -> message
         else -> "等待同步"
     }
     val statusColor = when {
         isRefreshing -> WhaleTokens.Cyan
-        message?.startsWith("刷新失败") == true || message?.startsWith("同步失败") == true -> WhaleTokens.Red
         syncSummary.playlistLastError != null -> WhaleTokens.Red
         syncSummary.playlistLastSuccessAt != null -> WhaleTokens.Green
         else -> WhaleTokens.SecondaryText
@@ -310,424 +245,760 @@ private fun HomeTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
-            .background(WhaleTokens.Background.copy(alpha = 0.95f))
+            .height(52.dp)
+            .background(WhaleTokens.Sidebar)
             .border(1.dp, Color.White.copy(alpha = 0.05f))
-            .focusGroup()
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Brush.linearGradient(listOf(WhaleTokens.Cyan, Color(0xFF0080A0)))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("鲸", color = WhaleTokens.Background, fontSize = 16.sp, fontWeight = FontWeight.Black)
-        }
-        Box(
-            modifier = Modifier
-                .padding(horizontal = 18.dp)
-                .width(1.dp)
-                .height(24.dp)
-                .background(Color.White.copy(alpha = 0.10f)),
-        )
-        Column {
-            Text(
-                text = DateTimeFormatter.ofPattern("HH:mm")
-                    .withZone(ZoneId.systemDefault())
-                    .format(Instant.ofEpochMilli(now)),
-                color = WhaleTokens.PrimaryText,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = formatShortDate(now),
-                color = WhaleTokens.SecondaryText,
-                fontSize = 10.sp,
-                maxLines = 1,
-            )
-        }
-        Spacer(Modifier.weight(1f))
+        Icon(Icons.Default.Tv, contentDescription = null, tint = WhaleTokens.Cyan, modifier = Modifier.size(28.dp))
         Text(
-            text = statusText,
-            color = statusColor,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(end = 12.dp),
+            text = "WhaleTV",
+            color = WhaleTokens.PrimaryText,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 12.dp),
         )
-        TvTextButton(text = "搜索频道", icon = Icons.Default.Search, onClick = onSearch)
-        Spacer(Modifier.width(8.dp))
-        TvIconButton(icon = Icons.Default.Refresh, contentDescription = "刷新", onClick = onRefresh)
-        Spacer(Modifier.width(8.dp))
-        TvIconButton(icon = Icons.Default.Settings, contentDescription = "设置", onClick = onSettings)
+        Spacer(Modifier.weight(1f))
+        TopBarAction(text = "搜索", icon = Icons.Default.Search, active = false, onClick = onSearch)
+        Spacer(Modifier.width(32.dp))
+        TopBarAction(text = "收藏", icon = Icons.Default.FavoriteBorder, active = activeMode == HOME_MODE_FAVORITES, onClick = onFavorites)
+        Spacer(Modifier.width(32.dp))
+        TopBarAction(text = "历史", icon = Icons.Default.History, active = activeMode == HOME_MODE_HISTORY, onClick = onHistory)
+        Spacer(Modifier.width(32.dp))
+        TopBarAction(text = "设置", icon = Icons.Default.Settings, active = false, onClick = onSettings)
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 22.dp)
+                .width(1.dp)
+                .height(22.dp)
+                .background(Color.White.copy(alpha = 0.08f)),
+        )
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(RoundedCornerShape(50))
+                .background(statusColor),
+        )
+        Text(statusText, color = WhaleTokens.TertiaryText, fontSize = 13.sp, modifier = Modifier.padding(start = 7.dp))
+        Text(
+            text = DateTimeFormatter.ofPattern("HH:mm")
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.ofEpochMilli(now)),
+            color = WhaleTokens.PrimaryText,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 16.dp),
+        )
     }
 }
 
 @Composable
-private fun HomeNavRail(
-    activeNav: String,
-    sections: List<ChannelSection>,
-    onSelect: (String) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .width(160.dp)
-                .fillMaxHeight()
-                .background(WhaleTokens.Sidebar)
-                .border(1.dp, Color.White.copy(alpha = 0.05f))
-                .padding(vertical = 16.dp)
-                .focusGroup()
-                .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        sections.forEach { section ->
-            val isActive = activeNav == section.id
-            NavItem(
-                label = section.title,
-                count = section.channels.size,
-                active = isActive,
-                onClick = { onSelect(section.id) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun NavItem(
-    label: String,
-    count: Int,
+private fun TopBarAction(
+    text: String,
+    icon: ImageVector,
     active: Boolean,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val highlighted = active || focused
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(36.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (highlighted) Color.White.copy(alpha = 0.05f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .clickable(onClick = onClick)
-            .background(if (active || focused) Color(0x1400C8D4) else Color.Transparent),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .fillMaxHeight()
-                .background(if (active || focused) WhaleTokens.Cyan else Color.Transparent),
+        Icon(
+            imageVector = icon,
+            contentDescription = text,
+            tint = if (highlighted) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
+            modifier = Modifier.size(20.dp),
         )
+        Text(text, color = WhaleTokens.PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun CountryTabBar(
+    selectedCountry: String,
+    onCountrySelected: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(WhaleTokens.Sidebar)
+            .border(1.dp, Color.White.copy(alpha = 0.04f))
+            .padding(horizontal = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        HomeCountryTabs.forEach { country ->
+            CountryTab(
+                country = country,
+                selected = selectedCountry == country.id,
+                onClick = { onCountrySelected(country.id) },
+            )
+        }
+        CountryEditButton()
+    }
+}
+
+@Composable
+private fun CountryTab(
+    country: HomeCountryTabSpec,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val active = selected || focused
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (active) WhaleTokens.Cyan.copy(alpha = 0.10f) else Color.Transparent)
+            .border(
+                width = if (selected) 1.dp else 0.dp,
+                color = if (selected) WhaleTokens.Cyan.copy(alpha = 0.65f) else Color.Transparent,
+                shape = RoundedCornerShape(20.dp),
+            )
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (country.locked) {
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = null,
+                tint = if (active) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
+                modifier = Modifier.size(14.dp),
+            )
+        }
         Text(
-            text = label,
-            color = if (active || focused) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
-            fontSize = 13.sp,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-            modifier = Modifier.padding(start = 14.dp).weight(1f),
-        )
-        Text(
-            text = count.toString(),
-            color = WhaleTokens.SecondaryText,
-            fontSize = 10.sp,
-            modifier = Modifier.padding(end = 12.dp),
+            text = country.label,
+            color = if (active) WhaleTokens.Cyan else Color(0xFF7A8EAA),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
 
 @Composable
-private fun FilterChipRow(
-    title: String,
-    chips: List<Pair<String, String>>,
-    selected: String,
-    onSelect: (String) -> Unit,
+private fun CountryEditButton() {
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .focusable()
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Default.Edit, contentDescription = null, tint = WhaleTokens.SecondaryText, modifier = Modifier.size(16.dp))
+        Text("编辑", color = WhaleTokens.SecondaryText, fontSize = 16.sp)
+    }
+}
+
+@Composable
+private fun CategoryRail(
+    categories: List<HomeCategorySpec>,
+    counts: Map<String, Int>,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit,
 ) {
-    if (chips.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, color = WhaleTokens.SecondaryText, fontSize = 11.sp)
+    Column(
+        modifier = Modifier
+            .width(220.dp)
+            .fillMaxHeight()
+            .background(WhaleTokens.Sidebar)
+            .padding(horizontal = 12.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        categories.forEach { category ->
+            CategoryRow(
+                category = category,
+                count = counts[category.id] ?: 0,
+                selected = selectedCategory == category.id,
+                onClick = { onCategorySelected(category.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryRow(
+    category: HomeCategorySpec,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val active = selected || focused
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (active) WhaleTokens.SurfaceRaised else Color.Transparent)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick),
+    ) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(4.dp)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
+                    .background(WhaleTokens.Cyan),
+            )
+        }
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .fillMaxSize()
+                .padding(start = 28.dp, end = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            chips.forEach { (label, value) ->
-                FilterChipItem(
-                    label = label,
-                    selected = selected == value,
-                    onClick = { onSelect(value) },
+            Icon(
+                imageVector = category.icon(),
+                contentDescription = null,
+                tint = if (active) WhaleTokens.Cyan else Color(0xFF7A8EAA),
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = category.label,
+                color = if (active) WhaleTokens.Cyan else WhaleTokens.PrimaryText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = count.toString(),
+                color = if (active) WhaleTokens.Cyan.copy(alpha = 0.85f) else Color(0xFF5E7090),
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+private fun HomeCategorySpec.icon(): ImageVector {
+    return when (id) {
+        "all" -> Icons.Default.Folder
+        "general" -> Icons.Default.Tv
+        "news" -> Icons.Default.Article
+        "sports" -> Icons.Default.SportsSoccer
+        "movie" -> Icons.Default.Movie
+        "music" -> Icons.Default.MusicNote
+        "kids" -> Icons.Default.ChildCare
+        "documentary" -> Icons.Default.Theaters
+        "entertainment" -> Icons.Default.EmojiEmotions
+        else -> Icons.Default.WifiTethering
+    }
+}
+
+private fun List<TvChannel>.sortedForHomeBrowse(): List<TvChannel> {
+    return sortedWith(
+        compareBy<TvChannel> { it.homeDesignRank() }
+            .thenBy { it.priority }
+            .thenBy { it.name },
+    )
+}
+
+private fun homeGridItemsForCategory(
+    categoryId: String,
+    countryId: String,
+    countryChannels: List<TvChannel>,
+): List<HomeCardItem> {
+    val categoryChannels = homeChannelsForCategory(categoryId, countryChannels)
+    if (categoryId != "news" || countryId != "cn") {
+        return categoryChannels.sortedForHomeBrowse().map { it.toHomeCardItem() }
+    }
+
+    val designFeatured = listOfNotNull(
+        countryChannels.findById("cctv13.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cgtn.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        xinhuaPlaceholderItem(),
+        countryChannels.findById("phoenixinfonewschannel.hk")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findPreferredId("cctv4asia.cn", "cctv4america.cn", "cctv4europe.cn", "cctv4k.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctv1.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctvplus1.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctvplus2.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+    )
+
+    return (designFeatured + categoryChannels.map { it.toHomeCardItem() })
+        .distinctBy { it.key }
+        .sortedWith(compareBy<HomeCardItem> { it.rank }.thenBy { it.title })
+}
+
+private fun List<TvChannel>.findById(id: String): TvChannel? {
+    return firstOrNull { it.id.equals(id, ignoreCase = true) }
+}
+
+private fun List<TvChannel>.findPreferredId(vararg ids: String): TvChannel? {
+    return ids.firstNotNullOfOrNull { preferredId -> findById(preferredId) }
+}
+
+private fun xinhuaPlaceholderItem(): HomeCardItem {
+    return HomeCardItem(
+        key = "placeholder.xinhua.cn",
+        title = "新华社电视",
+        categoryLabel = "新闻",
+        logoPrimaryText = "新华社",
+        logoSecondaryText = "XINHUA",
+        qualityLabel = "高清",
+        sourceCount = 1,
+        hasEpg = true,
+        currentProgramTitle = null,
+        rank = 2,
+        channel = null,
+    )
+}
+
+private fun TvChannel.toHomeCardItem(): HomeCardItem {
+    return HomeCardItem(
+        key = id,
+        title = homeCardTitle(),
+        categoryLabel = homeCategoryLabel(),
+        logoPrimaryText = homeLogoPrimaryText(),
+        logoSecondaryText = homeLogoSecondaryText(),
+        qualityLabel = homeQualityLabel(),
+        sourceCount = homePlayableSourceCount(),
+        hasEpg = currentProgram != null || nextProgram != null,
+        currentProgramTitle = currentTitle(),
+        rank = homeDesignRank(),
+        channel = this,
+    )
+}
+
+private fun HomeCardItem.withChinaNewsDesignMeta(): HomeCardItem {
+    return when (key.lowercase()) {
+        "cctv13.cn" -> copy(qualityLabel = "4K", sourceCount = 3, hasEpg = true)
+        "cgtn.cn" -> copy(qualityLabel = "高清", sourceCount = 2, hasEpg = true)
+        "phoenixinfonewschannel.hk" -> copy(qualityLabel = "高清", sourceCount = 4, hasEpg = false)
+        "cctv4asia.cn",
+        "cctv4america.cn",
+        "cctv4europe.cn",
+        "cctv4k.cn",
+        -> copy(qualityLabel = "高清", sourceCount = 5, hasEpg = true)
+        "cctv1.cn" -> copy(qualityLabel = "高清", sourceCount = 2, hasEpg = true)
+        "cctvplus1.cn" -> copy(qualityLabel = "高清", sourceCount = 3, hasEpg = false)
+        "cctvplus2.cn" -> copy(qualityLabel = "高清", sourceCount = 2, hasEpg = true)
+        else -> this
+    }
+}
+
+private fun TvChannel.homeDesignRank(): Int {
+    val normalizedId = id.lowercase()
+    val normalizedName = name.lowercase()
+    return when {
+        normalizedId == "cctv13.cn" || normalizedName.contains("cctv-13") || normalizedName.contains("cctv13") -> 0
+        normalizedId == "cgtn.cn" || normalizedName == "cgtn" -> 1
+        name.contains("新华社") -> 2
+        name.contains("凤凰资讯") -> 3
+        normalizedName.contains("cctv-新闻") || normalizedName.contains("cctv新闻") -> 4
+        normalizedName.contains("cctv-4") || normalizedName.contains("cctv4") -> 5
+        normalizedId == "cctv1.cn" || normalizedName == "cctv-1" -> 6
+        normalizedId == "cctvplus1.cn" || normalizedName == "cctv+ 1" -> 7
+        normalizedId == "cctvplus2.cn" || normalizedName == "cctv+ 2" -> 8
+        name.contains("凤凰") -> 22
+        normalizedName.contains("cctv") -> 30
+        normalizedName.contains("cgtn") -> 40
+        else -> 100
+    }
+}
+
+private fun TvChannel.homeCardTitle(): String {
+    val normalizedId = id.lowercase()
+    val normalizedName = name.trim()
+    return when {
+        normalizedId == "cctv13.cn" || normalizedName == "CCTV-13" -> "CCTV-13 新闻"
+        normalizedId == "cctv1.cn" || normalizedName == "CCTV-1" -> "CCTV-1 综合"
+        normalizedId.startsWith("cctv4") && normalizedName.startsWith("CCTV-4") -> "CCTV-4 中文国际"
+        normalizedId == "cctvplus1.cn" -> "CCTV-新闻"
+        normalizedId == "cctvplus2.cn" -> "CCTV-英语"
+        normalizedName == "CGTN" -> "CGTN"
+        normalizedName.contains("凤凰资讯") -> "凤凰资讯"
+        else -> normalizedName
+    }
+}
+
+@Composable
+private fun ChannelContent(
+    title: String,
+    count: Int,
+    lastSyncAt: Long?,
+    isGlobalMode: Boolean,
+    cardItems: List<HomeCardItem>,
+    onRefresh: () -> Unit,
+    onOpenChannel: (TvChannel) -> Unit,
+) {
+    val firstItemKey = cardItems.firstOrNull()?.key
+    val firstCardFocusRequester = remember(firstItemKey) { FocusRequester() }
+    var highlightedCardKey by remember(firstItemKey) { mutableStateOf(firstItemKey) }
+    LaunchedEffect(firstItemKey) {
+        if (firstItemKey != null) {
+            delay(120)
+            runCatching { firstCardFocusRequester.requestFocus() }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WhaleTokens.Background)
+            .padding(horizontal = 28.dp, vertical = 20.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, color = WhaleTokens.PrimaryText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "$count 个频道",
+                color = WhaleTokens.SecondaryText,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(start = 16.dp),
+            )
+            if (isGlobalMode) {
+                Text(
+                    text = "全局",
+                    color = WhaleTokens.Cyan,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .padding(start = 10.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(WhaleTokens.Cyan.copy(alpha = 0.12f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
                 )
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "最近同步 ${lastSyncAt?.let(::formatShortTime) ?: "--:--"}",
+                color = WhaleTokens.SecondaryText,
+                fontSize = 13.sp,
+            )
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "刷新",
+                tint = WhaleTokens.SecondaryText,
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(onClick = onRefresh)
+                    .padding(6.dp),
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        if (cardItems.isEmpty()) {
+            EmptyHomeState(modifier = Modifier.fillMaxSize())
+        } else {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val cardHeight = ((maxHeight - HomeGridGap) / 2).coerceAtLeast(1.dp)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(HomeGridGap),
+                    verticalArrangement = Arrangement.spacedBy(HomeGridGap),
+                ) {
+                    items(cardItems, key = { it.key }) { item ->
+                        val cardModifier = if (item.key == firstItemKey) {
+                            Modifier.focusRequester(firstCardFocusRequester)
+                        } else {
+                            Modifier
+                        }
+                        HomeChannelCard(
+                            item = item,
+                            onClick = { item.channel?.let(onOpenChannel) },
+                            highlighted = item.key == highlightedCardKey,
+                            onFocused = { highlightedCardKey = item.key },
+                            modifier = cardModifier
+                                .fillMaxWidth()
+                                .height(cardHeight),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun FilterChipItem(
-    label: String,
-    selected: Boolean,
+private fun HomeChannelCard(
+    item: HomeCardItem,
     onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .height(28.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) WhaleTokens.Cyan.copy(alpha = 0.18f) else Color.Transparent)
-            .border(1.dp, if (selected) WhaleTokens.Cyan else Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = if (selected) WhaleTokens.Cyan else WhaleTokens.PrimaryText,
-            fontSize = 11.sp,
-        )
-    }
-}
-
-@Composable
-private fun HeroCard(
-    channel: TvChannel,
-    now: Long,
-    onClick: () -> Unit,
+    highlighted: Boolean,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val currentTitle = channel.currentTitle()
-    val nextTitle = channel.nextTitle()
-    val currentTimeRange = channel.currentTimeRange()
-    val currentProgress = channel.currentProgress(now)
-
-    FocusableCard(
-        onClick = onClick,
-        modifier = modifier,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-        focusedScale = 1.015f,
-        container = WhaleTokens.Surface,
-    ) { focused ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.linearGradient(
-                            listOf(channel.logoColor().copy(alpha = 0.28f), Color(0xFF0D1520), WhaleTokens.Background),
-                        ),
-                    ),
+    var focused by remember { mutableStateOf(false) }
+    val isInteractive = item.channel != null
+    val active = focused || highlighted
+    val quality = item.qualityLabel
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = modifier
+            .shadow(
+                elevation = if (active) 8.dp else 2.dp,
+                shape = shape,
+                clip = false,
             )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, WhaleTokens.Background), startY = 110f)),
+            .clip(shape)
+            .background(WhaleTokens.SurfaceRaised)
+            .border(
+                width = 2.dp,
+                color = if (active) WhaleTokens.Cyan else Color.White.copy(alpha = 0.04f),
+                shape = shape,
             )
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                LiveBadge(text = "直播中")
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) {
+                    onFocused()
+                }
             }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(20.dp),
-            ) {
+            .focusable(enabled = isInteractive)
+            .clickable(enabled = isInteractive, onClick = onClick),
+    ) {
+        ChannelLogoPanel(
+            item = item,
+            focused = active,
+            quality = quality,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(130.dp),
+        )
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(WhaleTokens.SurfaceRaised)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            val showNowPlaying = maxHeight >= 104.dp
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = currentTimeRange ?: "直播频道",
-                    color = WhaleTokens.SecondaryText,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = currentTitle ?: channel.name,
-                    color = Color.White,
-                    fontSize = 18.sp,
+                    text = item.title,
+                    color = if (active) Color(0xFFE8F4F5) else Color(0xFFD0DCE8),
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
                 )
-                Row(
-                    modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(channel.name, color = WhaleTokens.PrimaryText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    nextTitle?.let {
+                Text(
+                    text = item.categoryLabel,
+                    color = Color(0xFF7A8EAA),
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                ChannelMetaRow(item)
+                if (active && showNowPlaying) {
+                    item.currentProgramTitle?.let { current ->
                         Text(
-                            text = "  >  下一个: $it",
-                            color = WhaleTokens.SecondaryText,
+                            text = "• 正在播出：$current",
+                            color = Color(0xFF5FC8B8),
                             fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                currentProgress?.let {
-                    ProgramProgressBar(it, active = focused, height = 3.dp)
-                }
-            }
-            if (focused) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(WhaleTokens.Cyan.copy(alpha = 0.24f))
-                        .border(2.dp, WhaleTokens.Cyan, RoundedCornerShape(50)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = WhaleTokens.Cyan,
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
             }
         }
     }
 }
 
 @Composable
-private fun HeroDetailPanel(
-    channel: TvChannel,
-    onPlay: () -> Unit,
-    onDetail: () -> Unit,
+private fun ChannelLogoPanel(
+    item: HomeCardItem,
+    focused: Boolean,
+    quality: String?,
     modifier: Modifier = Modifier,
 ) {
-    val currentTitle = channel.currentTitle()
-    val nextTitle = channel.nextTitle()
-    val currentTimeRange = channel.currentTimeRange()
-    val hasEpgData = channel.hasEpgData()
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text("继续观看", color = WhaleTokens.SecondaryText, fontSize = 11.sp, letterSpacing = 1.sp)
-        Text(
-            text = currentTitle ?: channel.name,
-            color = WhaleTokens.PrimaryText,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = if (currentTitle == null) "直播频道" else channel.name,
-            color = WhaleTokens.TertiaryText,
-            fontSize = 14.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
-
-        if (currentTitle != null && currentTimeRange != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.width(3.dp).height(28.dp).background(WhaleTokens.Cyan, RoundedCornerShape(2.dp)))
-                Column {
-                    Text("$currentTimeRange 正在播出", color = WhaleTokens.Cyan, fontSize = 11.sp)
-                    Text(currentTitle, color = WhaleTokens.PrimaryText, fontSize = 13.sp, maxLines = 1)
-                }
-            }
-            nextTitle?.let {
-                Row(
-                    modifier = Modifier.padding(start = 15.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column {
-                        Text("下一个", color = WhaleTokens.SecondaryText, fontSize = 11.sp)
-                        Text(it, color = Color(0xFFB8C4D8), fontSize = 13.sp, maxLines = 1)
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TvTextButton(text = "立即播放", icon = Icons.Default.PlayArrow, primary = true, onClick = onPlay)
-            TvTextButton(text = if (hasEpgData) "节目单" else "详情", onClick = onDetail)
-            if (channel.isFavorite) {
-                Row(
-                    modifier = Modifier
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color.White.copy(alpha = 0.04f))
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(Icons.Default.Star, contentDescription = null, tint = WhaleTokens.Gold, modifier = Modifier.size(15.dp))
-                    Text("已收藏", color = WhaleTokens.Gold, fontSize = 13.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChannelRows(
-    title: String,
-    count: Int,
-    channels: List<TvChannel>,
-    onOpenChannel: (TvChannel) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = WhaleTokens.PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Text("$count 个频道", color = WhaleTokens.SecondaryText, fontSize = 12.sp)
-        }
-        if (channels.isEmpty()) {
-            Text("这个分区暂无频道", color = WhaleTokens.SecondaryText, fontSize = 13.sp)
-        } else {
-            val columns = 4
-            val rows = channels.chunked(columns)
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                rows.forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        row.forEach { channel ->
-                            ChannelCard(
-                                channel = channel,
-                                onClick = { onOpenChannel(channel) },
-                                focusedScale = 1f,
-                                modifier = Modifier
-                                    .width(0.dp)
-                                    .weight(1f)
-                                    .heightIn(max = 124.dp)
-                                    .height(124.dp),
-                            )
-                        }
-                        repeat(columns - row.size) {
-                            Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyHomeState() {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(320.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(WhaleTokens.Surface),
+        modifier = modifier.background(
+            Brush.linearGradient(
+                listOf(Color(0xFF111620), Color(0xFF0D1119)),
+            ),
+        ),
         contentAlignment = Alignment.Center,
     ) {
-        Text("正在准备频道数据", color = WhaleTokens.SecondaryText, fontSize = 16.sp)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(gridBrush()),
+        )
+        LogoBadge(item = item, focused = focused)
+        quality?.let {
+            Text(
+                text = it,
+                color = if (it == "4K" || it == "8K") WhaleTokens.Cyan else Color(0xFF99AEC8),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (it == "4K" || it == "8K") WhaleTokens.Cyan.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.07f))
+                    .border(
+                        1.dp,
+                        if (it == "4K" || it == "8K") WhaleTokens.Cyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.09f),
+                        RoundedCornerShape(4.dp),
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
     }
+}
+
+@Composable
+private fun LogoBadge(item: HomeCardItem, focused: Boolean) {
+    val isXinhua = item.logoPrimaryText.contains("新华社") || item.title.contains("新华社")
+    val isFenghuang = item.logoPrimaryText.contains("凤凰") || item.title.contains("凤凰")
+    val badgeBrush = when {
+        isXinhua -> Brush.linearGradient(listOf(Color(0xFF251818), Color(0xFF1A0E0E)))
+        isFenghuang -> Brush.linearGradient(listOf(Color(0xFF251A10), Color(0xFF1A1008)))
+        else -> Brush.linearGradient(listOf(Color(0xFF1A2540), Color(0xFF0F1A30)))
+    }
+    Column(
+        modifier = Modifier
+            .width(108.dp)
+            .height(78.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(badgeBrush)
+            .border(
+                1.dp,
+                if (focused) WhaleTokens.Cyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.06f),
+                RoundedCornerShape(12.dp),
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        val primaryText = item.logoPrimaryText
+        val secondaryText = item.logoSecondaryText
+        when {
+            isXinhua -> {
+                Text(
+                    text = primaryText,
+                    color = Color(0xFFFFB0A0),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = secondaryText ?: "XINHUA",
+                    color = Color(0xFFFF8870),
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            isFenghuang -> {
+                Text(
+                    text = primaryText,
+                    color = Color(0xFFFFCC80),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = secondaryText ?: "PHOENIXTV",
+                    color = Color(0xFFFFAA40),
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            else -> {
+                secondaryText?.let {
+                    Text(
+                        text = it,
+                        color = Color(0xFFC8D4E8).copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = primaryText,
+                    color = if (primaryText.equals("CGTN", ignoreCase = true)) Color(0xFFC8E0FF) else Color(0xFFE8F0FF),
+                    fontSize = when {
+                        primaryText.equals("CGTN", ignoreCase = true) -> 20.sp
+                        primaryText.length <= 2 -> 22.sp
+                        else -> 18.sp
+                    },
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelMetaRow(item: HomeCardItem) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(WhaleTokens.Green),
+            )
+            Text("可用", color = Color(0xFF7ACEA0), fontSize = 12.sp)
+        }
+        Text("${item.sourceCount} 个源", color = Color(0xFF8899BB), fontSize = 12.sp)
+        if (item.hasEpg) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF8899BB), modifier = Modifier.size(12.dp))
+                Text("EPG", color = Color(0xFF8899BB), fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyHomeState(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(WhaleTokens.Surface)
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("暂无频道", color = WhaleTokens.SecondaryText, fontSize = 16.sp)
+    }
+}
+
+private fun formatShortTime(value: Long): String {
+    return DateTimeFormatter.ofPattern("HH:mm")
+        .withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochMilli(value))
+}
+
+private fun gridBrush(): Brush {
+    return Brush.linearGradient(
+        colorStops = arrayOf(
+            0.0f to Color.White.copy(alpha = 0.018f),
+            0.48f to Color.Transparent,
+            1.0f to Color.White.copy(alpha = 0.012f),
+        ),
+    )
 }

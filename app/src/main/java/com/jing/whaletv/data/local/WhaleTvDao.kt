@@ -9,8 +9,16 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ChannelDao {
     @Transaction
-    @Query("SELECT * FROM channels ORDER BY priority ASC, name ASC")
-    fun observeChannelsWithStreams(): Flow<List<ChannelWithStreams>>
+    @Query(
+        "SELECT * FROM channels WHERE isAvailable = 1 " +
+            "AND id IN (SELECT DISTINCT channelId FROM streams " +
+            "WHERE healthStatus = :healthyStatus OR healthStatus = :unknownStatus) " +
+            "ORDER BY priority ASC, name ASC",
+    )
+    fun observePlayableChannelsWithStreams(
+        healthyStatus: String,
+        unknownStatus: String,
+    ): Flow<List<ChannelWithStreams>>
 
     @Transaction
     @Query("SELECT * FROM channels WHERE id = :channelId LIMIT 1")
@@ -22,8 +30,28 @@ interface ChannelDao {
     @Query("SELECT * FROM streams")
     suspend fun getAllStreams(): List<StreamEntity>
 
-    @Query("SELECT COUNT(*) FROM channels WHERE id IN (SELECT DISTINCT channelId FROM streams)")
-    suspend fun countChannelsWithStreams(): Int
+    @Query(
+        "SELECT streams.* FROM streams INNER JOIN channels ON streams.channelId = channels.id " +
+            "WHERE channels.isAvailable = 1 " +
+            "AND (streams.healthStatus = :healthyStatus OR streams.healthStatus = :unknownStatus) " +
+            "ORDER BY channels.isFavorite DESC, channels.lastWatchedAt DESC, channels.priority ASC, streams.sortOrder ASC " +
+            "LIMIT :limit",
+    )
+    suspend fun getStartupProbeStreams(
+        healthyStatus: String,
+        unknownStatus: String,
+        limit: Int,
+    ): List<StreamEntity>
+
+    @Query(
+        "SELECT COUNT(*) FROM channels WHERE isAvailable = 1 " +
+            "AND id IN (SELECT DISTINCT channelId FROM streams " +
+            "WHERE healthStatus = :healthyStatus OR healthStatus = :unknownStatus)",
+    )
+    suspend fun countPlayableChannels(
+        healthyStatus: String,
+        unknownStatus: String,
+    ): Int
 
     @Upsert
     suspend fun upsertChannels(channels: List<ChannelEntity>)
@@ -34,8 +62,11 @@ interface ChannelDao {
     @Query("DELETE FROM streams WHERE channelId IN (:channelIds)")
     suspend fun deleteStreamsForChannels(channelIds: List<String>)
 
-    @Query("UPDATE channels SET isAvailable = 0 WHERE id NOT IN (:freshIds)")
-    suspend fun markUnavailableExcept(freshIds: List<String>)
+    @Query("UPDATE channels SET isAvailable = 0 WHERE id IN (:channelIds)")
+    suspend fun markUnavailable(channelIds: List<String>)
+
+    @Query("DELETE FROM channels WHERE id IN (:channelIds)")
+    suspend fun deleteChannels(channelIds: List<String>)
 
     @Query("UPDATE channels SET isFavorite = :isFavorite WHERE id = :channelId")
     suspend fun setFavorite(channelId: String, isFavorite: Boolean)
@@ -76,6 +107,12 @@ interface ChannelDao {
 
     @Query("UPDATE channels SET isAvailable = :isAvailable WHERE id = :channelId")
     suspend fun setChannelAvailability(channelId: String, isAvailable: Boolean)
+
+    @Query("UPDATE streams SET healthStatus = :unknownStatus WHERE healthStatus = :unhealthyStatus")
+    suspend fun resetUnhealthyStreams(unhealthyStatus: String, unknownStatus: String)
+
+    @Query("UPDATE channels SET isAvailable = 1 WHERE id IN (SELECT DISTINCT channelId FROM streams)")
+    suspend fun markChannelsWithStreamsAvailable()
 
     @Query("DELETE FROM channels")
     suspend fun clearChannels()

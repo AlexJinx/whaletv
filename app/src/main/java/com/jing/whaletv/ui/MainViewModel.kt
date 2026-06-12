@@ -14,10 +14,12 @@ import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.sync.SyncScheduler
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -83,17 +85,14 @@ class MainViewModel(
                 .filter { it.isPlayable() && it.id !in state.suppressed }
             HomeUiState(
                 channels = visibleChannels,
-                sections = buildSections(
-                    channels = visibleChannels,
-                    channelSortMode = state.settings.channelSortMode,
-                    visibleSectionIds = state.settings.visibleSectionIds,
-                ),
+                sections = emptyList(),
                 settings = state.settings,
                 syncSummary = state.syncSummary,
                 isRefreshing = state.isRefreshing,
                 message = state.message,
             )
         }
+        .flowOn(Dispatchers.Default)
         .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),

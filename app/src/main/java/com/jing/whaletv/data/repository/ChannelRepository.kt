@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -56,7 +57,10 @@ class ChannelRepository(
 
     fun observeChannels(): Flow<List<TvChannel>> {
         return combine(
-            channelDao.observeChannelsWithStreams(),
+            channelDao.observePlayableChannelsWithStreams(
+                healthyStatus = StreamHealth.HEALTHY.name,
+                unknownStatus = StreamHealth.UNKNOWN.name,
+            ),
             programDao.observeAllPrograms(),
         ) { channels, programs ->
             val now = System.currentTimeMillis()
@@ -64,7 +68,7 @@ class ChannelRepository(
             channels.map { channel ->
                 channel.toDomain(now, programsByChannel[channel.channel.id].orEmpty())
             }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     fun observeSyncSummary(): Flow<SyncSummary> {
@@ -80,56 +84,66 @@ class ChannelRepository(
     }
 
     suspend fun hasCachedPlayableChannels(): Boolean {
-        return channelDao.countChannelsWithStreams() > 0
+        return channelDao.countPlayableChannels(
+            healthyStatus = StreamHealth.HEALTHY.name,
+            unknownStatus = StreamHealth.UNKNOWN.name,
+        ) > 0
     }
 
-    suspend fun syncPlaylists() = playlistSyncMutex.withLock {
-        val settings = settingsRepository.settings.first()
-        val sources = buildList {
-            add(Source("primary", AppConstants.PRIMARY_PLAYLIST_URL))
-            if (settings.customPlaylistUrl.isNotBlank()) add(Source("custom", settings.customPlaylistUrl))
-        }
+    suspend fun syncPlaylists() = withContext(Dispatchers.Default) {
+        playlistSyncMutex.withLock {
+            val settings = settingsRepository.settings.first()
+            val sources = buildList {
+                add(Source("primary", AppConstants.PRIMARY_PLAYLIST_URL))
+                if (settings.customPlaylistUrl.isNotBlank()) add(Source("custom", settings.customPlaylistUrl))
+            }
 
-        val parsed = mutableListOf<ParsedChannel>()
-        var notModifiedCount = 0
-        var successCount = 0
+            val parsed = mutableListOf<ParsedChannel>()
+            var notModifiedCount = 0
+            var successCount = 0
+            val hasCachedChannels = channelDao.countPlayableChannels(
+                healthyStatus = StreamHealth.HEALTHY.name,
+                unknownStatus = StreamHealth.UNKNOWN.name,
+            ) > 0
 
-        try {
-            sources.forEach { source ->
-                when (val result = fetchSource(source)) {
-                    FetchResult.NotModified -> notModifiedCount += 1
-                    is FetchResult.Success -> {
-                        successCount += 1
-                        saveHttpCacheHeaders(source.key, result)
-                        parsed += m3uParser.parse(result.body)
+            try {
+                sources.forEach { source ->
+                    when (val result = fetchSource(source, useCacheHeaders = hasCachedChannels)) {
+                        FetchResult.NotModified -> notModifiedCount += 1
+                        is FetchResult.Success -> {
+                            successCount += 1
+                            saveHttpCacheHeaders(source.cacheKey(), result)
+                            parsed += m3uParser.parse(result.body)
+                        }
                     }
                 }
-            }
 
-            if (parsed.isNotEmpty()) {
-                importParsedChannels(
-                    channels = parsed,
-                    markMissingUnavailable = notModifiedCount == 0,
-                )
-            }
+                if (parsed.isNotEmpty()) {
+                    importParsedChannels(
+                        channels = parsed,
+                        markMissingUnavailable = notModifiedCount == 0,
+                    )
+                }
 
-            if (successCount > 0 || notModifiedCount > 0) {
-                setState(KEY_PLAYLIST_SUCCESS, System.currentTimeMillis().toString())
-                setState(KEY_PLAYLIST_ERROR, null)
+                if (successCount > 0 || notModifiedCount > 0) {
+                    restorePlaylistPlayableState()
+                    setState(KEY_PLAYLIST_SUCCESS, System.currentTimeMillis().toString())
+                    setState(KEY_PLAYLIST_ERROR, null)
+                }
+            } catch (error: Throwable) {
+                setState(KEY_PLAYLIST_ERROR, error.message ?: error::class.java.simpleName)
+                throw error
             }
-        } catch (error: Throwable) {
-            setState(KEY_PLAYLIST_ERROR, error.message ?: error::class.java.simpleName)
-            throw error
         }
     }
 
-    suspend fun syncEpg() {
+    suspend fun syncEpg() = withContext(Dispatchers.Default) {
         val settings = settingsRepository.settings.first()
-        if (settings.xmltvUrl.isBlank()) return
+        if (settings.xmltvUrl.isBlank()) return@withContext
 
         try {
             val channelIds = channelDao.getAllChannels().map { it.id }.toSet()
-            if (channelIds.isEmpty()) return
+            if (channelIds.isEmpty()) return@withContext
 
             val result = playlistClient.fetchText(
                 url = settings.xmltvUrl,
@@ -140,7 +154,7 @@ class ChannelRepository(
             if (result is FetchResult.NotModified) {
                 setState(KEY_EPG_SUCCESS, System.currentTimeMillis().toString())
                 setState(KEY_EPG_ERROR, null)
-                return
+                return@withContext
             }
 
             val success = result as FetchResult.Success
@@ -243,7 +257,11 @@ class ChannelRepository(
     }
 
     suspend fun precheckStartupStreams() {
-        val streams = channelDao.getAllStreams()
+        val streams = channelDao.getStartupProbeStreams(
+            healthyStatus = StreamHealth.HEALTHY.name,
+            unknownStatus = StreamHealth.UNKNOWN.name,
+            limit = STARTUP_STREAM_PRECHECK_LIMIT,
+        )
         if (streams.isEmpty()) return
 
         coroutineScope {
@@ -337,11 +355,12 @@ class ChannelRepository(
         }
     }
 
-    private suspend fun fetchSource(source: Source): FetchResult {
+    private suspend fun fetchSource(source: Source, useCacheHeaders: Boolean = true): FetchResult {
+        val cacheKey = source.cacheKey()
         return playlistClient.fetchText(
             url = source.url,
-            etag = syncStateDao.getValue("${source.key}.etag"),
-            lastModified = syncStateDao.getValue("${source.key}.last_modified"),
+            etag = syncStateDao.getValue("$cacheKey.etag").takeIf { useCacheHeaders },
+            lastModified = syncStateDao.getValue("$cacheKey.last_modified").takeIf { useCacheHeaders },
         )
     }
 
@@ -363,6 +382,7 @@ class ChannelRepository(
         val existingStreams = channelDao.getAllStreams().associateBy { it.channelId to it.url }
         val channelEntities = distinctChannels.map { parsed ->
             val old = existingChannels[parsed.id]
+            val hasPotentiallyPlayableStream = parsed.streams.isNotEmpty()
             ChannelEntity(
                 id = parsed.id,
                 name = parsed.name,
@@ -371,7 +391,7 @@ class ChannelRepository(
                 priority = parsed.priority,
                 isFavorite = old?.isFavorite ?: false,
                 lastWatchedAt = old?.lastWatchedAt,
-                isAvailable = old?.isAvailable ?: true,
+                isAvailable = hasPotentiallyPlayableStream,
                 updatedAt = now,
             )
         }
@@ -385,7 +405,9 @@ class ChannelRepository(
                     label = stream.label,
                     referrer = stream.referrer,
                     userAgent = stream.userAgent,
-                    healthStatus = old?.healthStatus ?: StreamHealth.UNKNOWN.name,
+                    healthStatus = old?.healthStatus
+                        ?.takeUnless { it == StreamHealth.UNHEALTHY.name }
+                        ?: StreamHealth.UNKNOWN.name,
                     failureCount = old?.failureCount ?: 0,
                     lastFailureAt = old?.lastFailureAt,
                     lastSuccessAt = old?.lastSuccessAt,
@@ -394,12 +416,33 @@ class ChannelRepository(
             }
         }
         val freshIds = distinctChannels.map { it.id }
+        val freshIdSet = freshIds.toSet()
+        val missingIds = if (markMissingUnavailable) {
+            existingChannels.keys.filterNot { it in freshIdSet }
+        } else {
+            emptyList()
+        }
 
         database.withTransaction {
-            if (markMissingUnavailable) channelDao.markUnavailableExcept(freshIds)
+            missingIds.chunked(SQLITE_BIND_PARAMETER_BATCH_SIZE).forEach { chunk ->
+                channelDao.deleteStreamsForChannels(chunk)
+                channelDao.deleteChannels(chunk)
+            }
             channelDao.upsertChannels(channelEntities)
-            channelDao.deleteStreamsForChannels(freshIds)
+            freshIds.chunked(SQLITE_BIND_PARAMETER_BATCH_SIZE).forEach { chunk ->
+                channelDao.deleteStreamsForChannels(chunk)
+            }
             channelDao.upsertStreams(streamEntities)
+        }
+    }
+
+    private suspend fun restorePlaylistPlayableState() {
+        database.withTransaction {
+            channelDao.resetUnhealthyStreams(
+                unhealthyStatus = StreamHealth.UNHEALTHY.name,
+                unknownStatus = StreamHealth.UNKNOWN.name,
+            )
+            channelDao.markChannelsWithStreamsAvailable()
         }
     }
 
@@ -407,7 +450,9 @@ class ChannelRepository(
         syncStateDao.setValue(SyncStateEntity(key = key, value = value))
     }
 
-    private data class Source(val key: String, val url: String)
+    private data class Source(val key: String, val url: String) {
+        fun cacheKey(): String = "$key.${url.hashCode().toUInt().toString(16)}"
+    }
 
     private companion object {
         const val KEY_PLAYLIST_SUCCESS = "playlist.last_success_at"
@@ -418,6 +463,8 @@ class ChannelRepository(
         const val ONE_HOUR_MS = 60 * 60 * 1000L
         const val STARTUP_STREAM_PRECHECK_TIMEOUT_MS = 1_000L
         const val STARTUP_STREAM_PRECHECK_CONCURRENCY = 4
+        const val STARTUP_STREAM_PRECHECK_LIMIT = 80
+        const val SQLITE_BIND_PARAMETER_BATCH_SIZE = 900
     }
 }
 
