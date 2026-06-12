@@ -4,21 +4,9 @@ import com.jing.whaletv.data.model.StreamHealth
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TvDisplayModelsTest {
-    @Test
-    fun sectionsContainFavoriteKeyAndChannelFilterMatchesFavoriteState() {
-        val channels = listOf(
-            channel(id = "1", name = "A", favorite = true),
-            channel(id = "2", name = "B", health = StreamHealth.UNHEALTHY),
-        )
-
-        assertTrue(TvNavSections.any { it.id == "favorite" })
-        assertEquals(1, channelsForSection("favorite", channels).size)
-    }
-
     @Test
     fun homeCountryTreatsCnSuffixAndChineseChannelsAsChina() {
         val idSuffix = channel(id = "CCTV13.cn", name = "CCTV-13", group = "News")

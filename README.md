@@ -1,22 +1,33 @@
 # 鲸鱼TV
 
-鲸鱼TV 是一个面向 Android TV / 电视盒子的国内直播 App 原型工程。第一版为纯端侧实现，不依赖自建后台：频道数据来自 iptv-org 中国 M3U，本地用 Room 缓存，后台用 WorkManager 定时刷新，播放内核使用 libVLC。APK 同时保留普通手机安装能力，方便侧载测试；手机上会强制横屏显示 TV 界面。
+鲸鱼TV 是一个面向 Android TV / 电视盒子的全球 IPTV 首页原型工程。当前版本已经收敛为干净的重构起点：只保留新版首页和 iptv-org 数据核心，不再包含旧播放器、搜索页、设置页或 EPG 页面。
 
-## 功能
+## 当前范围
 
 - Android TV 原生启动入口，包名 `com.jing.whaletv`，最低 Android 8.0。
-- 默认拉取 `https://iptv-org.github.io/iptv/index.m3u`（全球频道源），并按国家、综合、新闻、体育、音乐、娱乐、电影、少儿、纪录片等分区展示。
-- Room 本地缓存频道、备用源、收藏、最近观看、节目单和播放健康状态。
+- 默认拉取 `https://iptv-org.github.io/iptv/index.m3u`（全球频道源）。
+- 首页按国家和 iptv-org 官方分类展示频道，默认进入 `中国 / 新闻`。
+- 首页支持收藏和历史两个视觉入口，并基于本地已有 `isFavorite` / `lastWatchedAt` 数据筛选频道。
+- Room 本地缓存频道、备用源和节目单数据。
 - OkHttp 同步支持 ETag / Last-Modified，刷新失败时继续使用旧缓存。
 - WorkManager 自动刷新频道和可选 XMLTV 节目单。
-- libVLC 播放 HLS/HTTP/HTTPS 网络流，支持 User-Agent / Referer，播放失败自动切备用源。
-- TV 大屏 UI：频道墙、搜索、设置、播放页快速切台、收藏和当前/下一节目展示。
 
-## 为什么使用 VLC
+## 已清理内容
 
-本工程默认使用 `org.videolan.android:libvlc-all:3.7.2`。相较 Media3/ExoPlayer，libVLC 对各种不规整 IPTV 源、TS/HLS 变体、HTTP 直播流的兼容性更强。代价是 AAR 体积更大，并且需要关注 LGPL 2.1 许可义务。
+- 旧播放器、搜索页、设置页、EPG 页。
+- 旧通用频道卡片和 TV 控件组件。
+- libVLC 播放依赖和旧 AndroidX TV UI 依赖。
+- 旧设计目录 `design/Whale TV Android TV UI/`。
 
-后续如果某些设备上 VLC 的硬解或低延迟表现不理想，可以在 `playback` 包下增加第二个播放 Host，把同一套频道与切源逻辑接到 Media3。
+## 设计源
+
+当前首页设计参考保留在：
+
+```text
+design/WhaleTV Android TV Homepage/
+```
+
+本地生成的 `node_modules/` 和 `dist/` 不纳入版本控制。
 
 ## 构建
 
@@ -45,20 +56,6 @@ app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-如果需要先在手机上测试，也可以直接侧载同一个 APK。Manifest 中 `android.software.leanback` 被声明为可选，因此手机不会因为缺少 Android TV/Leanback 特性而拒绝安装。
-
-## 设置项
-
-- 自定义 M3U：追加自己的播放列表。
-- XMLTV 节目单：填入可访问的 XMLTV URL 后，首页和播放页会显示当前/下一节目。
-- 自动刷新：默认开启。
-- 刷新间隔：默认 12 小时。
-- 隐藏不可用频道：根据本地播放失败记录过滤。
-- 启动进入上次频道：默认开启。
-- 清除缓存：清除频道、播放源、节目单和同步状态。
-
 ## 合规备注
 
-iptv-org/iptv 声明仓库只包含用户提交的公开视频流链接，不托管视频文件。鲸鱼TV 第一版按自用/内部分发设计；如果公开上架或商业运营，需要额外准备内容授权、投诉下架机制、隐私政策和平台审核材料。
-
-libVLC Android 依赖使用 LGPL 2.1 许可。公开分发时应保留许可声明，并确保满足动态链接、替换库等 LGPL 要求。
+iptv-org/iptv 声明仓库只包含用户提交的公开视频流链接，不托管视频文件。鲸鱼TV 当前按自用/内部分发原型设计；如果公开上架或商业运营，需要额外准备内容授权、投诉下架机制、隐私政策和平台审核材料。

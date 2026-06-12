@@ -67,11 +67,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.tv.foundation)
-    implementation(libs.androidx.tv.material)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.libvlc)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 

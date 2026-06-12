@@ -60,37 +60,7 @@ data class AppSettings(
     val xmltvUrl: String = "",
     val autoRefresh: Boolean = true,
     val refreshIntervalHours: Int = 12,
-    val hideUnavailable: Boolean = false,
-    val channelSortMode: ChannelSortMode = ChannelSortMode.Default,
-    val visibleSectionIds: List<String> = DEFAULT_VISIBLE_SECTION_IDS,
-    val openLastChannel: Boolean = true,
-    val lastChannelId: String? = null,
 )
-
-val DEFAULT_VISIBLE_SECTION_IDS = listOf(
-    "continue",
-    "favorite",
-    "cctv",
-    "satellite",
-    "international",
-    "local",
-    "news",
-    "sports",
-    "entertainment",
-    "movie",
-    "music",
-    "lifestyle",
-    "kids",
-    "documentary",
-    "all",
-)
-
-enum class ChannelSortMode {
-    Default,
-    NameAsc,
-    LastWatched,
-    Country,
-}
 
 enum class StreamHealth {
     UNKNOWN,
@@ -98,12 +68,6 @@ enum class StreamHealth {
     DEGRADED,
     UNHEALTHY,
 }
-
-data class ChannelSection(
-    val id: String,
-    val title: String,
-    val channels: List<TvChannel>,
-)
 
 fun TvChannel.isPlayable(): Boolean {
     if (!isAvailable) return false

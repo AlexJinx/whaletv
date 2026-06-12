@@ -77,7 +77,6 @@ import com.jing.whaletv.ui.HomeCountryTabSpec
 import com.jing.whaletv.ui.HomeCountryTabs
 import com.jing.whaletv.ui.HomeUiState
 import com.jing.whaletv.ui.currentTitle
-import com.jing.whaletv.ui.formatProgramTime
 import com.jing.whaletv.ui.homeCategoryId
 import com.jing.whaletv.ui.homeCategoryLabel
 import com.jing.whaletv.ui.homeChannelsForCategory
@@ -110,16 +109,11 @@ private data class HomeCardItem(
     val hasEpg: Boolean,
     val currentProgramTitle: String?,
     val rank: Int,
-    val channel: TvChannel? = null,
 )
 
 @Composable
 fun HomeScreen(
     state: HomeUiState,
-    onOpenChannel: (TvChannel) -> Unit,
-    onOpenDetail: (TvChannel) -> Unit,
-    onSearch: () -> Unit,
-    onSettings: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     var selectedCountry by rememberSaveable { mutableStateOf("cn") }
@@ -171,10 +165,10 @@ fun HomeScreen(
                 isRefreshing = state.isRefreshing,
                 message = state.message,
                 activeMode = contentMode,
-                onSearch = onSearch,
+                onSearch = {},
                 onFavorites = { contentMode = HOME_MODE_FAVORITES },
                 onHistory = { contentMode = HOME_MODE_HISTORY },
-                onSettings = onSettings,
+                onSettings = {},
             )
             if (state.isRefreshing) {
                 LinearProgressIndicator(
@@ -209,7 +203,6 @@ fun HomeScreen(
                     isGlobalMode = contentMode != HOME_MODE_BROWSE,
                     cardItems = visibleItems,
                     onRefresh = onRefresh,
-                    onOpenChannel = onOpenChannel,
                 )
             }
         }
@@ -560,7 +553,6 @@ private fun xinhuaPlaceholderItem(): HomeCardItem {
         hasEpg = true,
         currentProgramTitle = null,
         rank = 2,
-        channel = null,
     )
 }
 
@@ -576,7 +568,6 @@ private fun TvChannel.toHomeCardItem(): HomeCardItem {
         hasEpg = currentProgram != null || nextProgram != null,
         currentProgramTitle = currentTitle(),
         rank = homeDesignRank(),
-        channel = this,
     )
 }
 
@@ -640,7 +631,6 @@ private fun ChannelContent(
     isGlobalMode: Boolean,
     cardItems: List<HomeCardItem>,
     onRefresh: () -> Unit,
-    onOpenChannel: (TvChannel) -> Unit,
 ) {
     val firstItemKey = cardItems.firstOrNull()?.key
     val firstCardFocusRequester = remember(firstItemKey) { FocusRequester() }
@@ -720,7 +710,6 @@ private fun ChannelContent(
                         }
                         HomeChannelCard(
                             item = item,
-                            onClick = { item.channel?.let(onOpenChannel) },
                             highlighted = item.key == highlightedCardKey,
                             onFocused = { highlightedCardKey = item.key },
                             modifier = cardModifier
@@ -737,13 +726,11 @@ private fun ChannelContent(
 @Composable
 private fun HomeChannelCard(
     item: HomeCardItem,
-    onClick: () -> Unit,
     highlighted: Boolean,
     onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val isInteractive = item.channel != null
     val active = focused || highlighted
     val quality = item.qualityLabel
     val shape = RoundedCornerShape(12.dp)
@@ -767,8 +754,8 @@ private fun HomeChannelCard(
                     onFocused()
                 }
             }
-            .focusable(enabled = isInteractive)
-            .clickable(enabled = isInteractive, onClick = onClick),
+            .focusable()
+            .clickable(onClick = {}),
     ) {
         ChannelLogoPanel(
             item = item,

@@ -179,83 +179,6 @@ class ChannelRepository(
         }
     }
 
-    suspend fun setFavorite(channelId: String, isFavorite: Boolean) {
-        channelDao.setFavorite(channelId, isFavorite)
-    }
-
-    suspend fun markWatched(channelId: String) {
-        val now = System.currentTimeMillis()
-        channelDao.markWatched(channelId, now)
-        settingsRepository.setLastChannelId(channelId)
-    }
-
-    suspend fun markStreamFailed(
-        stream: com.jing.whaletv.data.model.TvStream,
-        isTimeout: Boolean = false,
-    ): Boolean {
-        return database.withTransaction {
-            val currentEntity = channelDao.getStream(stream.channelId, stream.url)
-            val nextFailureCount = ((currentEntity?.failureCount ?: stream.failureCount) + 1).coerceAtLeast(1)
-            val nextHealth = when {
-                isTimeout -> StreamHealth.UNHEALTHY
-                nextFailureCount >= 1 -> StreamHealth.UNHEALTHY
-                else -> StreamHealth.UNKNOWN
-            }
-            val now = System.currentTimeMillis()
-            if (currentEntity == null) {
-                channelDao.upsertStreams(
-                    listOf(
-                        StreamEntity(
-                            channelId = stream.channelId,
-                            url = stream.url,
-                            quality = stream.quality,
-                            label = stream.label,
-                            referrer = stream.referrer,
-                            userAgent = stream.userAgent,
-                            healthStatus = nextHealth.name,
-                            failureCount = nextFailureCount,
-                            lastFailureAt = now,
-                            sortOrder = stream.sortOrder,
-                        ),
-                    ),
-                )
-            } else {
-                channelDao.updateStreamFailure(
-                    channelId = stream.channelId,
-                    url = stream.url,
-                    healthStatus = nextHealth.name,
-                    failureCount = nextFailureCount,
-                    failedAt = now,
-                )
-            }
-            val hasPlayableStream = channelDao.countPlayableStreams(
-                channelId = stream.channelId,
-                healthyStatus = StreamHealth.HEALTHY.name,
-                unknownStatus = StreamHealth.UNKNOWN.name,
-            ) > 0
-            channelDao.setChannelAvailability(stream.channelId, hasPlayableStream)
-            hasPlayableStream
-        }
-    }
-
-    suspend fun markChannelUnavailable(channelId: String) {
-        database.withTransaction {
-            channelDao.setChannelAvailability(channelId, false)
-        }
-    }
-
-    suspend fun markStreamSucceeded(stream: com.jing.whaletv.data.model.TvStream) {
-        database.withTransaction {
-            channelDao.updateStreamSuccess(
-                channelId = stream.channelId,
-                url = stream.url,
-                healthStatus = StreamHealth.HEALTHY.name,
-                successAt = System.currentTimeMillis(),
-            )
-            channelDao.setChannelAvailability(stream.channelId, true)
-        }
-    }
-
     suspend fun precheckStartupStreams() {
         val streams = channelDao.getStartupProbeStreams(
             healthyStatus = StreamHealth.HEALTHY.name,
@@ -346,12 +269,15 @@ class ChannelRepository(
         }.getOrDefault(null) in setOf("http", "https")
     }
 
-    suspend fun clearCache() {
+    private suspend fun markStreamSucceeded(stream: com.jing.whaletv.data.model.TvStream) {
         database.withTransaction {
-            channelDao.clearStreams()
-            channelDao.clearChannels()
-            programDao.clearPrograms()
-            syncStateDao.clear()
+            channelDao.updateStreamSuccess(
+                channelId = stream.channelId,
+                url = stream.url,
+                healthStatus = StreamHealth.HEALTHY.name,
+                successAt = System.currentTimeMillis(),
+            )
+            channelDao.setChannelAvailability(stream.channelId, true)
         }
     }
 
