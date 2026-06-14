@@ -21,6 +21,30 @@ class SearchModelsTest {
     }
 
     @Test
+    fun searchChannels_matchesChinesePinyinInitialsAndCompactKeys() {
+        val cctv = channel(id = "cctv13.cn", name = "CCTV-13 新闻", group = "News")
+        val phoenix = channel(id = "phoenix.hk", name = "凤凰资讯", group = "News")
+        val xinhua = channel(id = "xinhua.cn", name = "新华社电视", group = "News")
+        val sports = channel(id = "sports.cn", name = "体育频道", group = "Sports")
+        val channels = listOf(sports, xinhua, phoenix, cctv)
+
+        assertTrue(searchChannels("xw", channels).contains(cctv))
+        assertEquals(listOf(cctv), searchChannels("cctv13xw", channels))
+        assertEquals(listOf(phoenix), searchChannels("fhzx", channels))
+        assertEquals(listOf(xinhua), searchChannels("xhs", channels))
+        assertEquals(listOf(xinhua), searchChannels("xhsds", channels))
+        assertEquals(listOf(sports), searchChannels("ty", channels))
+    }
+
+    @Test
+    fun searchChannels_matchesEnglishWordInitials() {
+        val bbc = channel(id = "bbc.uk", name = "BBC News", group = "News")
+        val cnn = channel(id = "cnn.us", name = "CNN International", group = "News")
+
+        assertEquals(listOf(bbc), searchChannels("bn", listOf(cnn, bbc)))
+    }
+
+    @Test
     fun searchChannels_returnsEmptyForBlankQuery() {
         assertTrue(searchChannels("  ", listOf(channel(id = "cctv13.cn"))).isEmpty())
     }
