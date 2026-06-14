@@ -38,17 +38,28 @@
 - "Use the homepage content-card style for this list" means reuse the right content title row and card grid only.
 - "Make this a full-screen operation page, but visually consistent with the homepage" means do not use a left rail; inherit only the visual language.
 
+## Screen Patterns
+
+### Settings Page Pattern
+
+- Settings pages use the homepage framework and homepage card-grid rhythm.
+- All cards inside Settings pages must share the same width, height, corner radius, background, border, padding, and focus treatment.
+- Do not make individual Settings menu cards taller, wider, or multi-column just because their content is longer; truncate or split content into additional same-size cards instead.
+
+### Search Page Pattern
+
+- Search pages use the homepage visual style, but do not use the full homepage framework unless the user explicitly asks for it.
+- The default WhaleTV search page layout is split left and right: the left side contains the search input, clear/delete actions, and TV keyboard; the right side contains search results.
+- The TV keyboard order is fixed: `A-Z` followed by `0-9`, displayed as 6 rows by 6 columns.
+- Search result cards must reuse the same shared homepage channel card component and visual treatment. Do not create a second similar-looking card implementation for search results.
+- Search matching should include channel name, channel ID, category/group text, display-card fields, and acronym matching.
+- Do not assume full pinyin search support unless the user explicitly asks for it.
+
 ## Data Source Policy
 
 - WhaleTV does not provide user-configurable playlist or XMLTV data sources.
 - Channel and EPG data should come from the project's open-source defaults, primarily iptv-org playlist data and EPG/API sources discovered from that data.
 - Do not add custom source URL inputs, custom XMLTV inputs, arbitrary source testing forms, or "clear custom source" actions unless the user explicitly reverses this policy.
-
-## Settings Card Consistency
-
-- Settings pages use the homepage framework and homepage card-grid rhythm.
-- All cards inside Settings pages must share the same width, height, corner radius, background, border, padding, and focus treatment.
-- Do not make individual Settings menu cards taller, wider, or multi-column just because their content is longer; truncate or split content into additional same-size cards instead.
 
 ## Change Summary Communication
 
