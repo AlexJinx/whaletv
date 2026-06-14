@@ -53,6 +53,20 @@ class PlaybackStreamSelectorTest {
     }
 
     @Test
+    fun nextPlaybackStreamIndex_wrapsForManualSourceSwitching() {
+        val channel = channelWithStreams(
+            stream(url = "https://example.com/one.m3u8", sortOrder = 0),
+            stream(url = "https://example.com/two.m3u8", sortOrder = 1),
+        )
+        val streams = channel.playbackStreams()
+
+        assertEquals(1, streams.nextPlaybackStreamIndex(0))
+        assertEquals(0, streams.nextPlaybackStreamIndex(1))
+        assertEquals(0, streams.nextPlaybackStreamIndex(-1))
+        assertEquals(null, emptyList<TvStream>().nextPlaybackStreamIndex(0))
+    }
+
+    @Test
     fun isPlaybackSupported_acceptsHttpHttpsAndRtsp() {
         assertTrue(stream(url = "http://example.com/live.m3u8").isPlaybackSupported())
         assertTrue(stream(url = "https://example.com/live.m3u8").isPlaybackSupported())
