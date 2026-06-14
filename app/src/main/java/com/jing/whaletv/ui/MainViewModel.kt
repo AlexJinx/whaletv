@@ -36,6 +36,7 @@ data class HomeUiState(
     val message: String? = null,
     val playingChannelId: String? = null,
     val isSettingsOpen: Boolean = false,
+    val isSearchOpen: Boolean = false,
 )
 
 private data class UiPartialState(
@@ -47,6 +48,7 @@ private data class UiPartialState(
     val message: String? = null,
     val playingChannelId: String? = null,
     val isSettingsOpen: Boolean = false,
+    val isSearchOpen: Boolean = false,
 )
 
 class MainViewModel(
@@ -56,6 +58,7 @@ class MainViewModel(
     private val message = MutableStateFlow<String?>(null)
     private val playingChannelId = MutableStateFlow<String?>(null)
     private val isSettingsOpen = MutableStateFlow(false)
+    private val isSearchOpen = MutableStateFlow(false)
     private val syncMutex = Mutex()
 
     private val uiSource: StateFlow<UiPartialState> = combine(
@@ -81,6 +84,8 @@ class MainViewModel(
         base.copy(playingChannelId = channelId)
     }.combine(isSettingsOpen) { base, settingsOpen ->
         base.copy(isSettingsOpen = settingsOpen)
+    }.combine(isSearchOpen) { base, searchOpen ->
+        base.copy(isSearchOpen = searchOpen)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -104,6 +109,7 @@ class MainViewModel(
                 message = state.message,
                 playingChannelId = state.playingChannelId,
                 isSettingsOpen = state.isSettingsOpen,
+                isSearchOpen = state.isSearchOpen,
             )
         }
         .flowOn(Dispatchers.Default)
@@ -142,11 +148,21 @@ class MainViewModel(
     }
 
     fun openSettings() {
+        isSearchOpen.value = false
         isSettingsOpen.value = true
     }
 
     fun closeSettings() {
         isSettingsOpen.value = false
+    }
+
+    fun openSearch() {
+        isSettingsOpen.value = false
+        isSearchOpen.value = true
+    }
+
+    fun closeSearch() {
+        isSearchOpen.value = false
     }
 
     fun refreshSettingsNow() {

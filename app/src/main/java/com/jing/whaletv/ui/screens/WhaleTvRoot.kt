@@ -44,11 +44,18 @@ fun WhaleTvRoot(viewModel: MainViewModel) {
             onClearEpgCache = viewModel::clearEpgCache,
             onClearWatchHistory = viewModel::clearWatchHistory,
         )
+    } else if (state.isSearchOpen) {
+        SearchScreen(
+            channels = state.channels,
+            onBack = viewModel::closeSearch,
+            onChannelSelected = viewModel::openChannel,
+        )
     } else {
         HomeScreen(
             state = state,
             onRefresh = viewModel::refreshNow,
             onChannelSelected = viewModel::openChannel,
+            onSearch = viewModel::openSearch,
             onSettings = viewModel::openSettings,
             onUnavailableFeature = viewModel::showUnavailableFeature,
         )

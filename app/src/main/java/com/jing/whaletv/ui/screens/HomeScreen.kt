@@ -23,8 +23,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Article
-import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEmotions
@@ -57,37 +56,34 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
+import com.jing.whaletv.ui.ChannelCardItem
 import com.jing.whaletv.ui.HomeCategorySpec
 import com.jing.whaletv.ui.HomeCategorySpecs
 import com.jing.whaletv.ui.HomeCountryTabSpec
 import com.jing.whaletv.ui.HomeCountryTabs
 import com.jing.whaletv.ui.HomeUiState
-import com.jing.whaletv.ui.currentTitle
 import com.jing.whaletv.ui.homeCategoryId
-import com.jing.whaletv.ui.homeCategoryLabel
 import com.jing.whaletv.ui.homeChannelsForCategory
 import com.jing.whaletv.ui.homeCountryId
 import com.jing.whaletv.ui.homeFavoriteChannels
+import com.jing.whaletv.ui.homeDesignRank
 import com.jing.whaletv.ui.homeHistoryChannels
-import com.jing.whaletv.ui.homePlayableSourceCount
-import com.jing.whaletv.ui.homeQualityLabel
+import com.jing.whaletv.ui.toChannelCardItem
+import com.jing.whaletv.ui.components.HomeChannelCard
 import com.jing.whaletv.ui.theme.WhaleTokens
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -99,25 +95,13 @@ private const val HOME_MODE_FAVORITES = "favorites"
 private const val HOME_MODE_HISTORY = "history"
 private const val HOME_GRID_VISIBLE_ROWS = 3
 private val HomeGridGap = 20.dp
-private val CctvLogoLabelPattern = Regex("""CCTV[\s\-+]*([0-9]{1,2}|新闻|英语|E)""", RegexOption.IGNORE_CASE)
-
-private data class HomeCardItem(
-    val key: String,
-    val title: String,
-    val categoryLabel: String,
-    val logoLabel: String,
-    val qualityLabel: String?,
-    val sourceCount: Int,
-    val hasEpg: Boolean,
-    val currentProgramTitle: String?,
-    val rank: Int,
-)
 
 @Composable
 fun HomeScreen(
     state: HomeUiState,
     onRefresh: () -> Unit,
     onChannelSelected: (String) -> Unit,
+    onSearch: () -> Unit,
     onSettings: () -> Unit,
     onUnavailableFeature: (String) -> Unit,
 ) {
@@ -146,8 +130,8 @@ fun HomeScreen(
     val selectedCountryLabel = HomeCountryTabs.firstOrNull { it.id == selectedCountry }?.label ?: "中国"
     val visibleItems = remember(contentMode, selectedCategory, countryChannels, allChannels) {
         when (contentMode) {
-            HOME_MODE_FAVORITES -> homeFavoriteChannels(allChannels).map { it.toHomeCardItem() }
-            HOME_MODE_HISTORY -> homeHistoryChannels(allChannels).map { it.toHomeCardItem() }
+            HOME_MODE_FAVORITES -> homeFavoriteChannels(allChannels).map { it.toChannelCardItem() }
+            HOME_MODE_HISTORY -> homeHistoryChannels(allChannels).map { it.toChannelCardItem() }
             else -> homeGridItemsForCategory(selectedCategory, selectedCountry, countryChannels)
         }
     }
@@ -170,7 +154,7 @@ fun HomeScreen(
                 isRefreshing = state.isRefreshing,
                 message = state.message,
                 activeMode = contentMode,
-                onSearch = { onUnavailableFeature("搜索") },
+                onSearch = onSearch,
                 onFavorites = { contentMode = HOME_MODE_FAVORITES },
                 onHistory = { contentMode = HOME_MODE_HISTORY },
                 onSettings = onSettings,
@@ -503,7 +487,7 @@ private fun HomeCategorySpec.icon(): ImageVector {
     return when (id) {
         "all" -> Icons.Default.Folder
         "general" -> Icons.Default.Tv
-        "news" -> Icons.Default.Article
+        "news" -> Icons.AutoMirrored.Filled.Article
         "sports" -> Icons.Default.SportsSoccer
         "movie" -> Icons.Default.Movie
         "music" -> Icons.Default.MusicNote
@@ -526,26 +510,26 @@ private fun homeGridItemsForCategory(
     categoryId: String,
     countryId: String,
     countryChannels: List<TvChannel>,
-): List<HomeCardItem> {
+): List<ChannelCardItem> {
     val categoryChannels = homeChannelsForCategory(categoryId, countryChannels)
     if (categoryId != "news" || countryId != "cn") {
-        return categoryChannels.sortedForHomeBrowse().map { it.toHomeCardItem() }
+        return categoryChannels.sortedForHomeBrowse().map { it.toChannelCardItem() }
     }
 
     val designFeatured = listOfNotNull(
-        countryChannels.findById("cctv13.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cgtn.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctv13.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cgtn.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
         xinhuaPlaceholderItem(),
-        countryChannels.findById("phoenixinfonewschannel.hk")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findPreferredId("cctv4asia.cn", "cctv4america.cn", "cctv4europe.cn", "cctv4k.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cctv1.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cctvplus1.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cctvplus2.cn")?.toHomeCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("phoenixinfonewschannel.hk")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findPreferredId("cctv4asia.cn", "cctv4america.cn", "cctv4europe.cn", "cctv4k.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctv1.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctvplus1.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctvplus2.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
     )
 
-    return (designFeatured + categoryChannels.map { it.toHomeCardItem() })
+    return (designFeatured + categoryChannels.map { it.toChannelCardItem() })
         .distinctBy { it.key }
-        .sortedWith(compareBy<HomeCardItem> { it.rank }.thenBy { it.title })
+        .sortedWith(compareBy<ChannelCardItem> { it.rank }.thenBy { it.title })
 }
 
 private fun List<TvChannel>.findById(id: String): TvChannel? {
@@ -556,8 +540,8 @@ private fun List<TvChannel>.findPreferredId(vararg ids: String): TvChannel? {
     return ids.firstNotNullOfOrNull { preferredId -> findById(preferredId) }
 }
 
-private fun xinhuaPlaceholderItem(): HomeCardItem {
-    return HomeCardItem(
+private fun xinhuaPlaceholderItem(): ChannelCardItem {
+    return ChannelCardItem(
         key = "placeholder.xinhua.cn",
         title = "新华社电视",
         categoryLabel = "新闻",
@@ -570,21 +554,7 @@ private fun xinhuaPlaceholderItem(): HomeCardItem {
     )
 }
 
-private fun TvChannel.toHomeCardItem(): HomeCardItem {
-    return HomeCardItem(
-        key = id,
-        title = homeCardTitle(),
-        categoryLabel = homeCategoryLabel(),
-        logoLabel = homeLogoLabel(),
-        qualityLabel = homeQualityLabel(),
-        sourceCount = homePlayableSourceCount(),
-        hasEpg = currentProgram != null || nextProgram != null,
-        currentProgramTitle = currentTitle(),
-        rank = homeDesignRank(),
-    )
-}
-
-private fun HomeCardItem.withChinaNewsDesignMeta(): HomeCardItem {
+private fun ChannelCardItem.withChinaNewsDesignMeta(): ChannelCardItem {
     return when (key.lowercase()) {
         "cctv13.cn" -> copy(qualityLabel = "4K", sourceCount = 3, hasEpg = true)
         "cgtn.cn" -> copy(qualityLabel = "高清", sourceCount = 2, hasEpg = true)
@@ -601,69 +571,13 @@ private fun HomeCardItem.withChinaNewsDesignMeta(): HomeCardItem {
     }
 }
 
-private fun TvChannel.homeDesignRank(): Int {
-    val normalizedId = id.lowercase()
-    val normalizedName = name.lowercase()
-    return when {
-        normalizedId == "cctv13.cn" || normalizedName.contains("cctv-13") || normalizedName.contains("cctv13") -> 0
-        normalizedId == "cgtn.cn" || normalizedName == "cgtn" -> 1
-        name.contains("新华社") -> 2
-        name.contains("凤凰资讯") -> 3
-        normalizedName.contains("cctv-新闻") || normalizedName.contains("cctv新闻") -> 4
-        normalizedName.contains("cctv-4") || normalizedName.contains("cctv4") -> 5
-        normalizedId == "cctv1.cn" || normalizedName == "cctv-1" -> 6
-        normalizedId == "cctvplus1.cn" || normalizedName == "cctv+ 1" -> 7
-        normalizedId == "cctvplus2.cn" || normalizedName == "cctv+ 2" -> 8
-        name.contains("凤凰") -> 22
-        normalizedName.contains("cctv") -> 30
-        normalizedName.contains("cgtn") -> 40
-        else -> 100
-    }
-}
-
-private fun TvChannel.homeCardTitle(): String {
-    val normalizedId = id.lowercase()
-    val normalizedName = name.trim()
-    return when {
-        normalizedId == "cctv13.cn" || normalizedName == "CCTV-13" -> "CCTV-13 新闻"
-        normalizedId == "cctv1.cn" || normalizedName == "CCTV-1" -> "CCTV-1 综合"
-        normalizedId.startsWith("cctv4") && normalizedName.startsWith("CCTV-4") -> "CCTV-4 中文国际"
-        normalizedId == "cctvplus1.cn" -> "CCTV-新闻"
-        normalizedId == "cctvplus2.cn" -> "CCTV-英语"
-        normalizedName == "CGTN" -> "CGTN"
-        normalizedName.contains("凤凰资讯") -> "凤凰资讯"
-        else -> normalizedName
-    }
-}
-
-private fun TvChannel.homeLogoLabel(): String {
-    val title = homeCardTitle().trim()
-    title.toCctvLogoLabel()?.let { return it }
-
-    val normalized = title
-        .replace("高清", "")
-        .replace("频道", "")
-        .trim()
-    return when {
-        normalized.equals("CGTN", ignoreCase = true) -> "CGTN"
-        normalized.contains("新华社") -> "新华社"
-        normalized.contains("凤凰") -> "凤凰资讯"
-        else -> normalized.ifBlank { name.trim() }
-    }
-}
-
-private fun String.toCctvLogoLabel(): String? {
-    val suffix = CctvLogoLabelPattern.find(this)?.groupValues?.getOrNull(1) ?: return null
-    return if (suffix.equals("E", ignoreCase = true)) "CCTV-英语" else "CCTV-$suffix"
-}
-
 @Composable
 private fun ChannelContent(
     title: String,
     count: Int,
     lastSyncAt: Long?,
     isGlobalMode: Boolean,
-    cardItems: List<HomeCardItem>,
+    cardItems: List<ChannelCardItem>,
     onChannelSelected: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -761,246 +675,6 @@ private fun ChannelContent(
 }
 
 @Composable
-private fun HomeChannelCard(
-    item: HomeCardItem,
-    highlighted: Boolean,
-    onFocused: () -> Unit,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val active = focused || highlighted
-    val quality = item.qualityLabel
-    val shape = RoundedCornerShape(12.dp)
-    Column(
-        modifier = modifier
-            .shadow(
-                elevation = if (active) 8.dp else 2.dp,
-                shape = shape,
-                clip = false,
-            )
-            .clip(shape)
-            .background(WhaleTokens.SurfaceRaised)
-            .border(
-                width = 2.dp,
-                color = if (active) WhaleTokens.Cyan else Color.White.copy(alpha = 0.04f),
-                shape = shape,
-            )
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) {
-                    onFocused()
-                }
-            }
-            .focusable()
-            .clickable(onClick = onClick),
-    ) {
-        ChannelLogoPanel(
-            item = item,
-            focused = active,
-            quality = quality,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(130.dp),
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .background(WhaleTokens.SurfaceRaised)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            Text(
-                text = item.title,
-                color = if (active) Color(0xFFE8F4F5) else Color(0xFFD0DCE8),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = item.categoryLabel,
-                color = Color(0xFF7A8EAA),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 3.dp),
-            )
-            item.currentProgramTitle?.let { current ->
-                NowPlayingRow(
-                    title = current,
-                    modifier = Modifier
-                        .padding(top = 10.dp)
-                        .fillMaxWidth(),
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            ChannelMetaRow(item)
-        }
-    }
-}
-
-@Composable
-private fun ChannelLogoPanel(
-    item: HomeCardItem,
-    focused: Boolean,
-    quality: String?,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier.background(
-            Brush.linearGradient(
-                listOf(Color(0xFF111620), Color(0xFF0D1119)),
-            ),
-        ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(gridBrush()),
-        )
-        LogoBadge(item = item, focused = focused)
-        quality?.let {
-            Text(
-                text = it,
-                color = if (it == "4K" || it == "8K") WhaleTokens.Cyan else Color(0xFF99AEC8),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (it == "4K" || it == "8K") WhaleTokens.Cyan.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.07f))
-                    .border(
-                        1.dp,
-                        if (it == "4K" || it == "8K") WhaleTokens.Cyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.09f),
-                        RoundedCornerShape(4.dp),
-                    )
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun LogoBadge(item: HomeCardItem, focused: Boolean) {
-    val label = item.logoLabel
-    val badgeBrush = Brush.linearGradient(listOf(Color(0xFF1A2540), Color(0xFF0F1A30)))
-    val labelColor = when {
-        label.equals("CGTN", ignoreCase = true) -> Color(0xFFC8E0FF)
-        else -> Color(0xFFE8F0FF)
-    }
-    val labelFontSize = when {
-        label.equals("CGTN", ignoreCase = true) -> 20.sp
-        label.length <= 4 -> 18.sp
-        label.length <= 7 -> 17.sp
-        else -> 15.sp
-    }
-
-    Box(
-        modifier = Modifier
-            .width(108.dp)
-            .height(78.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(badgeBrush)
-            .border(
-                1.dp,
-                if (focused) WhaleTokens.Cyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.06f),
-                RoundedCornerShape(12.dp),
-            )
-            .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = labelColor,
-            fontSize = labelFontSize,
-            fontWeight = FontWeight.ExtraBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
-private fun NowPlayingRow(title: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(7.dp))
-            .background(Color(0xFF5FC8B8).copy(alpha = 0.09f))
-            .border(1.dp, Color(0xFF5FC8B8).copy(alpha = 0.14f), RoundedCornerShape(7.dp))
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(5.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFF5FC8B8)),
-        )
-        Text(
-            text = "正在播出：$title",
-            color = Color(0xFF8FE3D8),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun ChannelMetaRow(item: HomeCardItem) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        ChannelMetaChip(text = "可用", dotColor = WhaleTokens.Green, textColor = Color(0xFF7ACEA0))
-        ChannelMetaChip(text = "${item.sourceCount} 个源")
-        if (item.hasEpg) {
-            ChannelMetaChip(text = "EPG", showCalendar = true)
-        }
-    }
-}
-
-@Composable
-private fun ChannelMetaChip(
-    text: String,
-    dotColor: Color? = null,
-    textColor: Color = Color(0xFF8899BB),
-    showCalendar: Boolean = false,
-) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.045f))
-            .border(1.dp, Color.White.copy(alpha = 0.055f), RoundedCornerShape(999.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        dotColor?.let {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(it),
-            )
-        }
-        if (showCalendar) {
-            Icon(Icons.Default.CalendarToday, contentDescription = null, tint = textColor, modifier = Modifier.size(12.dp))
-        }
-        Text(text, color = textColor, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-    }
-}
-
-@Composable
 private fun EmptyHomeState(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
@@ -1019,12 +693,3 @@ private fun formatShortTime(value: Long): String {
         .format(Instant.ofEpochMilli(value))
 }
 
-private fun gridBrush(): Brush {
-    return Brush.linearGradient(
-        colorStops = arrayOf(
-            0.0f to Color.White.copy(alpha = 0.018f),
-            0.48f to Color.Transparent,
-            1.0f to Color.White.copy(alpha = 0.012f),
-        ),
-    )
-}
