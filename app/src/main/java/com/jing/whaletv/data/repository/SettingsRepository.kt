@@ -1,7 +1,10 @@
 package com.jing.whaletv.data.repository
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -12,20 +15,50 @@ import kotlinx.coroutines.flow.map
 
 private val Context.whaleSettingsStore by preferencesDataStore("whale_tv_settings")
 
-class SettingsRepository(private val context: Context) {
-    val settings: Flow<AppSettings> = context.whaleSettingsStore.data.map { prefs ->
+class SettingsRepository(
+    private val dataStore: DataStore<Preferences>,
+) {
+    constructor(context: Context) : this(context.whaleSettingsStore)
+
+    val settings: Flow<AppSettings> = dataStore.data.map { prefs ->
         AppSettings(
-            customPlaylistUrl = prefs[Keys.customPlaylistUrl].orEmpty(),
-            xmltvUrl = prefs[Keys.xmltvUrl].orEmpty(),
             autoRefresh = prefs[Keys.autoRefresh] ?: true,
-            refreshIntervalHours = prefs[Keys.refreshIntervalHours] ?: AppConstants.DEFAULT_REFRESH_INTERVAL_HOURS,
+            refreshIntervalHours = normalizeRefreshIntervalHours(
+                prefs[Keys.refreshIntervalHours] ?: AppConstants.DEFAULT_REFRESH_INTERVAL_HOURS,
+            ),
         )
     }
 
+    suspend fun saveSettings(settings: AppSettings): AppSettings {
+        val normalized = settings.normalized()
+        dataStore.edit { prefs ->
+            prefs.remove(Keys.legacyCustomPlaylistUrl)
+            prefs.remove(Keys.legacyXmltvUrl)
+            prefs[Keys.autoRefresh] = normalized.autoRefresh
+            prefs[Keys.refreshIntervalHours] = normalized.refreshIntervalHours
+        }
+        return normalized
+    }
+
     private object Keys {
-        val customPlaylistUrl = stringPreferencesKey("custom_playlist_url")
-        val xmltvUrl = stringPreferencesKey("xmltv_url")
+        val legacyCustomPlaylistUrl = stringPreferencesKey("custom_playlist_url")
+        val legacyXmltvUrl = stringPreferencesKey("xmltv_url")
         val autoRefresh = booleanPreferencesKey("auto_refresh")
         val refreshIntervalHours = intPreferencesKey("refresh_interval_hours")
     }
+
+    companion object {
+        const val MIN_REFRESH_INTERVAL_HOURS = 1
+        const val MAX_REFRESH_INTERVAL_HOURS = 72
+
+        fun normalizeRefreshIntervalHours(value: Int): Int {
+            return value.coerceIn(MIN_REFRESH_INTERVAL_HOURS, MAX_REFRESH_INTERVAL_HOURS)
+        }
+    }
+}
+
+private fun AppSettings.normalized(): AppSettings {
+    return copy(
+        refreshIntervalHours = SettingsRepository.normalizeRefreshIntervalHours(refreshIntervalHours),
+    )
 }

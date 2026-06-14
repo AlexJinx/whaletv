@@ -49,6 +49,31 @@ interface ChannelDao {
         unknownStatus: String,
     ): Int
 
+    @Query("SELECT COUNT(*) FROM channels")
+    fun observeChannelCount(): Flow<Int>
+
+    @Query(
+        "SELECT COUNT(*) FROM channels WHERE isAvailable = 1 " +
+            "AND id IN (SELECT DISTINCT channelId FROM streams " +
+            "WHERE healthStatus = :healthyStatus OR healthStatus = :unknownStatus)",
+    )
+    fun observePlayableChannelCount(
+        healthyStatus: String,
+        unknownStatus: String,
+    ): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM streams")
+    fun observeStreamCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM streams WHERE healthStatus = :unhealthyStatus")
+    fun observeUnhealthyStreamCount(unhealthyStatus: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM channels WHERE isFavorite = 1")
+    fun observeFavoriteCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM channels WHERE lastWatchedAt IS NOT NULL")
+    fun observeHistoryCount(): Flow<Int>
+
     @Upsert
     suspend fun upsertChannels(channels: List<ChannelEntity>)
 
@@ -94,8 +119,17 @@ interface ChannelDao {
     @Query("UPDATE streams SET healthStatus = :unknownStatus WHERE healthStatus = :unhealthyStatus")
     suspend fun resetUnhealthyStreams(unhealthyStatus: String, unknownStatus: String)
 
+    @Query(
+        "UPDATE streams SET healthStatus = :unknownStatus, failureCount = 0, " +
+            "lastFailureAt = NULL, lastSuccessAt = NULL",
+    )
+    suspend fun resetAllStreamHealth(unknownStatus: String)
+
     @Query("UPDATE channels SET isAvailable = 1 WHERE id IN (SELECT DISTINCT channelId FROM streams)")
     suspend fun markChannelsWithStreamsAvailable()
+
+    @Query("UPDATE channels SET lastWatchedAt = NULL")
+    suspend fun clearWatchHistory()
 }
 
 @Dao
@@ -103,11 +137,17 @@ interface ProgramDao {
     @Query("SELECT * FROM programs ORDER BY channelId ASC, startAt ASC, endAt ASC")
     fun observeAllPrograms(): Flow<List<ProgramEntity>>
 
+    @Query("SELECT COUNT(*) FROM programs")
+    fun observeProgramCount(): Flow<Int>
+
     @Upsert
     suspend fun upsertPrograms(programs: List<ProgramEntity>)
 
     @Query("DELETE FROM programs WHERE endAt < :cutoff")
     suspend fun deleteProgramsEndedBefore(cutoff: Long)
+
+    @Query("DELETE FROM programs")
+    suspend fun deleteAllPrograms()
 }
 
 @Dao

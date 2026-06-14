@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.jing.whaletv.core.AppContainer
+import com.jing.whaletv.data.model.AppSettings
+import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.isPlayable
 import com.jing.whaletv.data.model.playbackStreams
+import com.jing.whaletv.sync.SyncScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -25,18 +28,25 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 data class HomeUiState(
     val channels: List<TvChannel> = emptyList(),
+    val settings: AppSettings = AppSettings(),
     val syncSummary: SyncSummary = SyncSummary(),
+    val settingsDiagnostics: SettingsDiagnostics = SettingsDiagnostics(),
+    val effectiveEpgUrl: String? = null,
     val isRefreshing: Boolean = false,
     val message: String? = null,
     val playingChannelId: String? = null,
+    val isSettingsOpen: Boolean = false,
 )
 
 private data class UiPartialState(
     val channels: List<TvChannel>,
+    val settings: AppSettings,
     val syncSummary: SyncSummary,
+    val settingsDiagnostics: SettingsDiagnostics,
     val isRefreshing: Boolean = false,
     val message: String? = null,
     val playingChannelId: String? = null,
+    val isSettingsOpen: Boolean = false,
 )
 
 class MainViewModel(
@@ -45,14 +55,22 @@ class MainViewModel(
     private val isRefreshing = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
     private val playingChannelId = MutableStateFlow<String?>(null)
+    private val isSettingsOpen = MutableStateFlow(false)
     private val syncMutex = Mutex()
 
     private val uiSource: StateFlow<UiPartialState> = combine(
         combine(
             container.channelRepository.observeChannels(),
             container.channelRepository.observeSyncSummary(),
-        ) { channels, syncSummary ->
-            UiPartialState(channels = channels, syncSummary = syncSummary)
+            container.settingsRepository.settings,
+            container.channelRepository.observeSettingsDiagnostics(),
+        ) { channels, syncSummary, settings, diagnostics ->
+            UiPartialState(
+                channels = channels,
+                syncSummary = syncSummary,
+                settings = settings,
+                settingsDiagnostics = diagnostics,
+            )
         },
         isRefreshing,
     ) { base, refreshing ->
@@ -61,20 +79,31 @@ class MainViewModel(
         base.copy(message = msg)
     }.combine(playingChannelId) { base, channelId ->
         base.copy(playingChannelId = channelId)
+    }.combine(isSettingsOpen) { base, settingsOpen ->
+        base.copy(isSettingsOpen = settingsOpen)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = UiPartialState(emptyList(), SyncSummary()),
+        initialValue = UiPartialState(
+            channels = emptyList(),
+            settings = AppSettings(),
+            syncSummary = SyncSummary(),
+            settingsDiagnostics = SettingsDiagnostics(),
+        ),
     )
 
     val uiState: StateFlow<HomeUiState> = uiSource
         .map { state ->
             HomeUiState(
                 channels = state.channels.filter { it.isPlayable() },
+                settings = state.settings,
                 syncSummary = state.syncSummary,
+                settingsDiagnostics = state.settingsDiagnostics,
+                effectiveEpgUrl = effectiveEpgUrl(state.syncSummary),
                 isRefreshing = state.isRefreshing,
                 message = state.message,
                 playingChannelId = state.playingChannelId,
+                isSettingsOpen = state.isSettingsOpen,
             )
         }
         .flowOn(Dispatchers.Default)
@@ -93,7 +122,7 @@ class MainViewModel(
         viewModelScope.launch {
             runSync(
                 startMessage = "正在刷新频道",
-                successMessage = "频道已更新",
+                successMessage = "频道与节目单已更新",
                 failurePrefix = "刷新失败",
             )
         }
@@ -110,6 +139,71 @@ class MainViewModel(
 
     fun closePlayer() {
         playingChannelId.value = null
+    }
+
+    fun openSettings() {
+        isSettingsOpen.value = true
+    }
+
+    fun closeSettings() {
+        isSettingsOpen.value = false
+    }
+
+    fun refreshSettingsNow() {
+        viewModelScope.launch {
+            runSync(
+                startMessage = "正在刷新数据源",
+                successMessage = "数据源已刷新",
+                failurePrefix = "刷新失败",
+            )
+        }
+    }
+
+    fun saveSettings(settings: AppSettings) {
+        viewModelScope.launch {
+            val saved = container.settingsRepository.saveSettings(settings)
+            if (saved.autoRefresh) {
+                SyncScheduler.schedulePeriodic(container.appContext, saved.refreshIntervalHours)
+            } else {
+                SyncScheduler.cancelPeriodic(container.appContext)
+            }
+            showMessage("设置已保存")
+        }
+    }
+
+    fun testDefaultPlaylistSource() {
+        viewModelScope.launch {
+            val result = container.channelRepository.testDefaultPlaylistSource()
+            showMessage(result.message)
+        }
+    }
+
+    fun testActiveEpgSource() {
+        viewModelScope.launch {
+            val result = container.channelRepository.testActiveEpgSource()
+            showMessage(result.message)
+        }
+    }
+
+    fun resetStreamHealth() {
+        viewModelScope.launch {
+            container.channelRepository.resetStreamHealth()
+            showMessage("播放源健康状态已重置")
+        }
+    }
+
+    fun clearEpgCache() {
+        viewModelScope.launch {
+            container.channelRepository.clearEpgCache()
+            showMessage("节目单缓存已清空")
+        }
+    }
+
+    fun clearWatchHistory() {
+        viewModelScope.launch {
+            container.channelRepository.clearWatchHistory()
+            showMessage("观看历史已清空")
+        }
     }
 
     fun toggleFavorite(channelId: String, isFavorite: Boolean) {
@@ -199,6 +293,11 @@ private fun Throwable.userFacingMessage(): String {
     return message
         ?.takeIf { it.isNotBlank() }
         ?: this::class.java.simpleName
+}
+
+internal fun effectiveEpgUrl(syncSummary: SyncSummary): String? {
+    return syncSummary.discoveredEpgUrl
+        ?.takeIf { it.isNotBlank() }
 }
 
 class MainViewModelFactory(

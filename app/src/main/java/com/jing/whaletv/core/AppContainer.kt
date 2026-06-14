@@ -14,7 +14,6 @@ class AppContainer(context: Context) {
     val settingsRepository: SettingsRepository = SettingsRepository(appContext)
     val channelRepository: ChannelRepository = ChannelRepository(
         database = database,
-        settingsRepository = settingsRepository,
         playlistClient = playlistClient,
     )
 }

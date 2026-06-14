@@ -118,6 +118,7 @@ fun HomeScreen(
     state: HomeUiState,
     onRefresh: () -> Unit,
     onChannelSelected: (String) -> Unit,
+    onSettings: () -> Unit,
     onUnavailableFeature: (String) -> Unit,
 ) {
     var selectedCountry by rememberSaveable { mutableStateOf("cn") }
@@ -172,7 +173,7 @@ fun HomeScreen(
                 onSearch = { onUnavailableFeature("搜索") },
                 onFavorites = { contentMode = HOME_MODE_FAVORITES },
                 onHistory = { contentMode = HOME_MODE_HISTORY },
-                onSettings = { onUnavailableFeature("设置") },
+                onSettings = onSettings,
             )
             if (state.isRefreshing) {
                 LinearProgressIndicator(

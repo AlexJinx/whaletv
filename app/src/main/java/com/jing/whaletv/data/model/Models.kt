@@ -56,10 +56,23 @@ data class ParsedStream(
 )
 
 data class AppSettings(
-    val customPlaylistUrl: String = "",
-    val xmltvUrl: String = "",
     val autoRefresh: Boolean = true,
     val refreshIntervalHours: Int = 12,
+)
+
+data class SettingsDiagnostics(
+    val channelCount: Int = 0,
+    val playableChannelCount: Int = 0,
+    val streamCount: Int = 0,
+    val programCount: Int = 0,
+    val favoriteCount: Int = 0,
+    val historyCount: Int = 0,
+    val unhealthyStreamCount: Int = 0,
+)
+
+data class SettingsTestResult(
+    val success: Boolean,
+    val message: String,
 )
 
 enum class StreamHealth {
@@ -75,8 +88,11 @@ fun TvChannel.isPlayable(): Boolean {
 }
 
 data class SyncSummary(
+    val playlistLastAttemptAt: Long? = null,
     val playlistLastSuccessAt: Long? = null,
     val playlistLastError: String? = null,
+    val epgLastAttemptAt: Long? = null,
     val epgLastSuccessAt: Long? = null,
     val epgLastError: String? = null,
+    val discoveredEpgUrl: String? = null,
 )

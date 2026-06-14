@@ -27,11 +27,29 @@ fun WhaleTvRoot(viewModel: MainViewModel) {
             onPlaybackReady = { streamUrl -> viewModel.markPlaybackReady(playingChannel.id, streamUrl) },
             onPlaybackFailed = { streamUrl -> viewModel.markPlaybackFailed(playingChannel.id, streamUrl) },
         )
+    } else if (state.isSettingsOpen) {
+        SettingsScreen(
+            settings = state.settings,
+            syncSummary = state.syncSummary,
+            diagnostics = state.settingsDiagnostics,
+            effectiveEpgUrl = state.effectiveEpgUrl,
+            isRefreshing = state.isRefreshing,
+            message = state.message,
+            onBack = viewModel::closeSettings,
+            onSave = viewModel::saveSettings,
+            onRefreshNow = viewModel::refreshSettingsNow,
+            onTestDefaultPlaylistSource = viewModel::testDefaultPlaylistSource,
+            onTestActiveEpgSource = viewModel::testActiveEpgSource,
+            onResetStreamHealth = viewModel::resetStreamHealth,
+            onClearEpgCache = viewModel::clearEpgCache,
+            onClearWatchHistory = viewModel::clearWatchHistory,
+        )
     } else {
         HomeScreen(
             state = state,
             onRefresh = viewModel::refreshNow,
             onChannelSelected = viewModel::openChannel,
+            onSettings = viewModel::openSettings,
             onUnavailableFeature = viewModel::showUnavailableFeature,
         )
     }

@@ -10,6 +10,8 @@ import com.jing.whaletv.data.local.WhaleTvDatabase
 import com.jing.whaletv.data.local.toDomain
 import com.jing.whaletv.data.model.ParsedChannel
 import com.jing.whaletv.data.model.Program
+import com.jing.whaletv.data.model.SettingsDiagnostics
+import com.jing.whaletv.data.model.SettingsTestResult
 import com.jing.whaletv.data.model.StreamHealth
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
@@ -26,7 +28,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.coroutineScope
@@ -39,7 +40,6 @@ import okhttp3.Request
 
 class ChannelRepository(
     private val database: WhaleTvDatabase,
-    private val settingsRepository: SettingsRepository,
     private val playlistClient: PlaylistClient,
     private val m3uParser: M3uParser = M3uParser(),
     private val xmltvParser: XmltvParser = XmltvParser(),
@@ -76,12 +76,40 @@ class ChannelRepository(
         return syncStateDao.observeAll().map { states ->
             val values = states.associate { it.key to it.value }
             SyncSummary(
+                playlistLastAttemptAt = values[KEY_PLAYLIST_ATTEMPT]?.toLongOrNull(),
                 playlistLastSuccessAt = values[KEY_PLAYLIST_SUCCESS]?.toLongOrNull(),
                 playlistLastError = values[KEY_PLAYLIST_ERROR],
+                epgLastAttemptAt = values[KEY_EPG_ATTEMPT]?.toLongOrNull(),
                 epgLastSuccessAt = values[KEY_EPG_SUCCESS]?.toLongOrNull(),
                 epgLastError = values[KEY_EPG_ERROR],
+                discoveredEpgUrl = values[KEY_DISCOVERED_EPG_URL],
             )
         }
+    }
+
+    fun observeSettingsDiagnostics(): Flow<SettingsDiagnostics> {
+        return combine(
+            channelDao.observeChannelCount(),
+            channelDao.observePlayableChannelCount(
+                healthyStatus = StreamHealth.HEALTHY.name,
+                unknownStatus = StreamHealth.UNKNOWN.name,
+            ),
+            channelDao.observeStreamCount(),
+            programDao.observeProgramCount(),
+            channelDao.observeFavoriteCount(),
+            channelDao.observeHistoryCount(),
+            channelDao.observeUnhealthyStreamCount(StreamHealth.UNHEALTHY.name),
+        ) { values ->
+            SettingsDiagnostics(
+                channelCount = values[0],
+                playableChannelCount = values[1],
+                streamCount = values[2],
+                programCount = values[3],
+                favoriteCount = values[4],
+                historyCount = values[5],
+                unhealthyStreamCount = values[6],
+            )
+        }.flowOn(Dispatchers.Default)
     }
 
     suspend fun hasCachedPlayableChannels(): Boolean {
@@ -122,13 +150,85 @@ class ChannelRepository(
         }
     }
 
+    suspend fun testDefaultPlaylistSource(): SettingsTestResult {
+        return testPlaylistUrl(AppConstants.PRIMARY_PLAYLIST_URL)
+    }
+
+    suspend fun testActiveEpgSource(): SettingsTestResult {
+        val xmltvUrl = withContext(Dispatchers.Default) {
+            syncStateDao.getValue(KEY_DISCOVERED_EPG_URL).orEmpty()
+        }
+        if (xmltvUrl.isBlank()) {
+            return SettingsTestResult(false, "尚未发现节目单地址，请先立即刷新")
+        }
+        return testEpgUrl(xmltvUrl)
+    }
+
+    private suspend fun testPlaylistUrl(url: String): SettingsTestResult = withContext(Dispatchers.Default) {
+        val normalizedUrl = url.trim()
+        if (!isHttpUrl(normalizedUrl)) {
+            return@withContext SettingsTestResult(false, "请输入 http/https M3U 地址")
+        }
+
+        runCatching {
+            val result = playlistClient.fetchText(url = normalizedUrl)
+            val body = (result as FetchResult.Success).body
+            val channels = m3uParser.parse(body)
+            if (channels.isEmpty()) {
+                SettingsTestResult(false, "源可访问，但没有解析到频道")
+            } else {
+                val streamCount = channels.sumOf { it.streams.size }
+                val epgHint = m3uParser.parseXmltvUrl(body)
+                    ?.let { "，发现 EPG" }
+                    .orEmpty()
+                SettingsTestResult(true, "源可用：${channels.size} 个频道，$streamCount 个播放源$epgHint")
+            }
+        }.getOrElse { error ->
+            SettingsTestResult(false, "测试源失败：${error.userFacingMessage()}")
+        }
+    }
+
+    private suspend fun testEpgUrl(url: String): SettingsTestResult = withContext(Dispatchers.Default) {
+        val normalizedUrl = url.trim()
+        if (!isHttpUrl(normalizedUrl)) {
+            return@withContext SettingsTestResult(false, "请输入 http/https XMLTV 地址")
+        }
+
+        runCatching {
+            val result = playlistClient.fetchText(url = normalizedUrl)
+            val body = (result as FetchResult.Success).body
+            val knownChannelIds = channelDao.getAllChannels().map { it.id }.toSet()
+            val allowedChannelIds = knownChannelIds.ifEmpty { sampleXmltvChannelIds(body) }
+            val programs = xmltvParser.parse(StringReader(body), allowedChannelIds)
+            when {
+                allowedChannelIds.isEmpty() -> SettingsTestResult(false, "节目单可访问，但没有找到节目频道")
+                programs.isEmpty() -> SettingsTestResult(false, "节目单可解析，但没有匹配当前频道")
+                else -> SettingsTestResult(true, "节目单可用：解析到 ${programs.size} 条节目")
+            }
+        }.getOrElse { error ->
+            SettingsTestResult(false, "测试节目单失败：${error.userFacingMessage()}")
+        }
+    }
+
+    suspend fun resetStreamHealth() = withContext(Dispatchers.Default) {
+        database.withTransaction {
+            channelDao.resetAllStreamHealth(StreamHealth.UNKNOWN.name)
+            channelDao.markChannelsWithStreamsAvailable()
+        }
+    }
+
+    suspend fun clearEpgCache() = withContext(Dispatchers.Default) {
+        programDao.deleteAllPrograms()
+    }
+
+    suspend fun clearWatchHistory() = withContext(Dispatchers.Default) {
+        channelDao.clearWatchHistory()
+    }
+
     suspend fun syncPlaylists() = withContext(Dispatchers.Default) {
         playlistSyncMutex.withLock {
-            val settings = settingsRepository.settings.first()
-            val sources = buildList {
-                add(Source("primary", AppConstants.PRIMARY_PLAYLIST_URL))
-                if (settings.customPlaylistUrl.isNotBlank()) add(Source("custom", settings.customPlaylistUrl))
-            }
+            setState(KEY_PLAYLIST_ATTEMPT, System.currentTimeMillis().toString())
+            val sources = listOf(Source("primary", AppConstants.PRIMARY_PLAYLIST_URL))
 
             val parsed = mutableListOf<ParsedChannel>()
             var notModifiedCount = 0
@@ -173,15 +273,19 @@ class ChannelRepository(
     }
 
     suspend fun syncEpg() = withContext(Dispatchers.Default) {
-        val settings = settingsRepository.settings.first()
-        val xmltvUrl = settings.xmltvUrl.ifBlank {
-            syncStateDao.getValue(KEY_DISCOVERED_EPG_URL).orEmpty()
+        setState(KEY_EPG_ATTEMPT, System.currentTimeMillis().toString())
+        val xmltvUrl = syncStateDao.getValue(KEY_DISCOVERED_EPG_URL).orEmpty()
+        if (xmltvUrl.isBlank()) {
+            setState(KEY_EPG_ERROR, null)
+            return@withContext
         }
-        if (xmltvUrl.isBlank()) return@withContext
 
         try {
             val channelIds = channelDao.getAllChannels().map { it.id }.toSet()
-            if (channelIds.isEmpty()) return@withContext
+            if (channelIds.isEmpty()) {
+                setState(KEY_EPG_ERROR, null)
+                return@withContext
+            }
 
             val result = playlistClient.fetchText(
                 url = xmltvUrl,
@@ -302,9 +406,20 @@ class ChannelRepository(
     }
 
     private fun isProbeSupported(url: String): Boolean {
+        return isHttpUrl(url)
+    }
+
+    private fun isHttpUrl(url: String): Boolean {
         return runCatching {
             URI(url).scheme?.lowercase()
         }.getOrDefault(null) in setOf("http", "https")
+    }
+
+    private fun sampleXmltvChannelIds(content: String): Set<String> {
+        return xmltvChannelRegex.findAll(content)
+            .map { it.groupValues[1].substringBefore("@").ifBlank { it.groupValues[1] } }
+            .take(XMLTV_TEST_CHANNEL_SAMPLE_LIMIT)
+            .toSet()
     }
 
     private suspend fun markStreamSucceeded(stream: TvStream) {
@@ -420,8 +535,10 @@ class ChannelRepository(
 
     private companion object {
         const val KEY_PLAYLIST_SUCCESS = "playlist.last_success_at"
+        const val KEY_PLAYLIST_ATTEMPT = "playlist.last_attempt_at"
         const val KEY_PLAYLIST_ERROR = "playlist.last_error"
         const val KEY_EPG = "epg"
+        const val KEY_EPG_ATTEMPT = "epg.last_attempt_at"
         const val KEY_EPG_SUCCESS = "epg.last_success_at"
         const val KEY_EPG_ERROR = "epg.last_error"
         const val KEY_DISCOVERED_EPG_URL = "epg.discovered_url"
@@ -430,7 +547,13 @@ class ChannelRepository(
         const val STARTUP_STREAM_PRECHECK_CONCURRENCY = 4
         const val STARTUP_STREAM_PRECHECK_LIMIT = 80
         const val SQLITE_BIND_PARAMETER_BATCH_SIZE = 900
+        const val XMLTV_TEST_CHANNEL_SAMPLE_LIMIT = 80
+        val xmltvChannelRegex = Regex("""<programme\b[^>]*\bchannel=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
     }
+}
+
+private fun Throwable.userFacingMessage(): String {
+    return message?.takeIf { it.isNotBlank() } ?: this::class.java.simpleName
 }
 
 private fun Program.toEntity(): ProgramEntity = ProgramEntity(
