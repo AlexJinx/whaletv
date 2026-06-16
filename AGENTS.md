@@ -43,8 +43,6 @@
 ### Settings Page Pattern
 
 - Settings pages use the homepage framework and homepage card-grid rhythm.
-- All cards inside Settings pages must share the same width, height, corner radius, background, border, padding, and focus treatment.
-- Do not make individual Settings menu cards taller, wider, or multi-column just because their content is longer; truncate or split content into additional same-size cards instead.
 
 ### Search Page Pattern
 
