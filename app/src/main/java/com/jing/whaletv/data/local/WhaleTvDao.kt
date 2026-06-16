@@ -23,6 +23,9 @@ interface ChannelDao {
     @Query("SELECT * FROM channels")
     suspend fun getAllChannels(): List<ChannelEntity>
 
+    @Query("SELECT * FROM channels WHERE isAvailable = 1")
+    suspend fun getAvailableChannels(): List<ChannelEntity>
+
     @Query("SELECT * FROM streams")
     suspend fun getAllStreams(): List<StreamEntity>
 
@@ -49,7 +52,7 @@ interface ChannelDao {
         unknownStatus: String,
     ): Int
 
-    @Query("SELECT COUNT(*) FROM channels")
+    @Query("SELECT COUNT(*) FROM channels WHERE isAvailable = 1")
     fun observeChannelCount(): Flow<Int>
 
     @Query(
@@ -109,6 +112,9 @@ interface ChannelDao {
 
     @Query("UPDATE channels SET isAvailable = :isAvailable WHERE id = :channelId")
     suspend fun setChannelAvailability(channelId: String, isAvailable: Boolean)
+
+    @Query("UPDATE channels SET isAvailable = 0 WHERE id IN (:channelIds)")
+    suspend fun markChannelsUnavailable(channelIds: List<String>)
 
     @Query("UPDATE channels SET isFavorite = :isFavorite WHERE id = :channelId")
     suspend fun setChannelFavorite(channelId: String, isFavorite: Boolean)

@@ -9,6 +9,7 @@ import com.jing.whaletv.data.local.SyncStateEntity
 import com.jing.whaletv.data.local.WhaleTvDatabase
 import com.jing.whaletv.data.local.toDomain
 import com.jing.whaletv.data.model.ParsedChannel
+import com.jing.whaletv.data.model.PlaylistScope
 import com.jing.whaletv.data.model.Program
 import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SettingsTestResult
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -44,6 +46,7 @@ import okhttp3.Request
 class ChannelRepository(
     private val database: WhaleTvDatabase,
     private val playlistClient: PlaylistClient,
+    private val settingsRepository: SettingsRepository,
     private val m3uParser: M3uParser = M3uParser(),
     private val xmltvParser: XmltvParser = XmltvParser(),
     private val epgGuideSourceParser: EpgGuideSourceParser = EpgGuideSourceParser(),
@@ -167,12 +170,13 @@ class ChannelRepository(
     }
 
     suspend fun testDefaultPlaylistSource(): SettingsTestResult {
-        return testPlaylistUrl(AppConstants.PRIMARY_PLAYLIST_URL)
+        val scope = settingsRepository.settings.first().playlistScope
+        return testPlaylistUrl(scope.playlistUrl)
     }
 
     suspend fun testActiveEpgSource(): SettingsTestResult {
         val channelIds = withContext(Dispatchers.Default) {
-            channelDao.getAllChannels().map { it.id }.toSet()
+            channelDao.getAvailableChannels().map { it.id }.toSet()
         }
         if (channelIds.isEmpty()) {
             return SettingsTestResult(false, "尚未同步频道，请先立即刷新")
@@ -247,7 +251,8 @@ class ChannelRepository(
     suspend fun syncPlaylists() = withContext(Dispatchers.Default) {
         playlistSyncMutex.withLock {
             setState(KEY_PLAYLIST_ATTEMPT, System.currentTimeMillis().toString())
-            val sources = listOf(Source("primary", AppConstants.PRIMARY_PLAYLIST_URL))
+            val playlistScope = settingsRepository.settings.first().playlistScope
+            val sources = listOf(Source(playlistScope.cacheKey(), playlistUrlForScope(playlistScope)))
 
             val parsed = mutableListOf<ParsedChannel>()
             var notModifiedCount = 0
@@ -295,7 +300,7 @@ class ChannelRepository(
         setState(KEY_EPG_ATTEMPT, System.currentTimeMillis().toString())
 
         try {
-            val channelIds = channelDao.getAllChannels().map { it.id }.toSet()
+            val channelIds = channelDao.getAvailableChannels().map { it.id }.toSet()
             if (channelIds.isEmpty()) {
                 setState(KEY_EPG_ERROR, null)
                 return@withContext
@@ -631,7 +636,7 @@ class ChannelRepository(
         database.withTransaction {
             missingIds.chunked(SQLITE_BIND_PARAMETER_BATCH_SIZE).forEach { chunk ->
                 channelDao.deleteStreamsForChannels(chunk)
-                channelDao.deleteChannels(chunk)
+                channelDao.markChannelsUnavailable(chunk)
             }
             channelDao.upsertChannels(channelEntities)
             freshIds.chunked(SQLITE_BIND_PARAMETER_BATCH_SIZE).forEach { chunk ->
@@ -692,6 +697,10 @@ private fun parseStoredList(value: String?): List<String> {
         ?.filter { it.isNotBlank() }
         .orEmpty()
 }
+
+internal fun PlaylistScope.cacheKey(): String = "scope.$id"
+
+internal fun playlistUrlForScope(scope: PlaylistScope): String = scope.playlistUrl
 
 private fun Throwable.userFacingMessage(): String {
     return message?.takeIf { it.isNotBlank() } ?: this::class.java.simpleName

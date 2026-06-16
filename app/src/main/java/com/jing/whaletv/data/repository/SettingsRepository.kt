@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.jing.whaletv.core.AppConstants
 import com.jing.whaletv.data.model.AppSettings
+import com.jing.whaletv.data.model.PlaylistScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -26,6 +27,7 @@ class SettingsRepository(
             refreshIntervalHours = normalizeRefreshIntervalHours(
                 prefs[Keys.refreshIntervalHours] ?: AppConstants.DEFAULT_REFRESH_INTERVAL_HOURS,
             ),
+            playlistScope = PlaylistScope.fromId(prefs[Keys.playlistScope]),
         )
     }
 
@@ -36,6 +38,7 @@ class SettingsRepository(
             prefs.remove(Keys.legacyXmltvUrl)
             prefs[Keys.autoRefresh] = normalized.autoRefresh
             prefs[Keys.refreshIntervalHours] = normalized.refreshIntervalHours
+            prefs[Keys.playlistScope] = normalized.playlistScope.id
         }
         return normalized
     }
@@ -45,6 +48,7 @@ class SettingsRepository(
         val legacyXmltvUrl = stringPreferencesKey("xmltv_url")
         val autoRefresh = booleanPreferencesKey("auto_refresh")
         val refreshIntervalHours = intPreferencesKey("refresh_interval_hours")
+        val playlistScope = stringPreferencesKey("playlist_scope")
     }
 
     companion object {

@@ -2,6 +2,7 @@ package com.jing.whaletv.core
 
 object AppConstants {
     const val APP_NAME = "鲸鱼TV"
+    const val IPTV_ORG_PLAYLIST_BASE_URL = "https://iptv-org.github.io/iptv"
     const val PRIMARY_PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.m3u"
     const val IPTV_ORG_GUIDES_API_URL = "https://iptv-org.github.io/api/guides.json"
     const val DEFAULT_REFRESH_INTERVAL_HOURS = 12

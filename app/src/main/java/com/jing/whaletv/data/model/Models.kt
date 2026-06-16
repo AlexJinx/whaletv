@@ -59,6 +59,7 @@ data class ParsedStream(
 data class AppSettings(
     val autoRefresh: Boolean = true,
     val refreshIntervalHours: Int = 12,
+    val playlistScope: PlaylistScope = PlaylistScope.ALL,
 )
 
 data class SettingsDiagnostics(

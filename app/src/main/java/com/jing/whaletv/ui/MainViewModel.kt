@@ -177,13 +177,22 @@ class MainViewModel(
 
     fun saveSettings(settings: AppSettings) {
         viewModelScope.launch {
+            val previous = uiState.value.settings
             val saved = container.settingsRepository.saveSettings(settings)
             if (saved.autoRefresh) {
                 SyncScheduler.schedulePeriodic(container.appContext, saved.refreshIntervalHours)
             } else {
                 SyncScheduler.cancelPeriodic(container.appContext)
             }
-            showMessage("设置已保存")
+            if (saved.playlistScope != previous.playlistScope) {
+                runSync(
+                    startMessage = "正在切换频道范围",
+                    successMessage = "频道范围已更新",
+                    failurePrefix = "切换失败",
+                )
+            } else {
+                showMessage("设置已保存")
+            }
         }
     }
 

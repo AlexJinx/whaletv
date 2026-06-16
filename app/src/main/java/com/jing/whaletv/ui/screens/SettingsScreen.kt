@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jing.whaletv.core.AppConstants
 import com.jing.whaletv.data.model.AppSettings
+import com.jing.whaletv.data.model.PlaylistScope
 import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.repository.SettingsRepository
@@ -97,6 +98,7 @@ fun SettingsScreen(
     var selectedMenuId by rememberSaveable { mutableStateOf(SettingsMenu.Source.name) }
     var autoRefresh by rememberSaveable { mutableStateOf(settings.autoRefresh) }
     var refreshIntervalText by rememberSaveable { mutableStateOf(settings.refreshIntervalHours.toString()) }
+    var playlistScopeId by rememberSaveable { mutableStateOf(settings.playlistScope.id) }
     var pendingMaintenanceAction by rememberSaveable { mutableStateOf<String?>(null) }
     val refreshInterval = refreshIntervalText.toIntOrNull()
         ?.let(SettingsRepository::normalizeRefreshIntervalHours)
@@ -104,6 +106,7 @@ fun SettingsScreen(
     val draftSettings = AppSettings(
         autoRefresh = autoRefresh,
         refreshIntervalHours = refreshInterval,
+        playlistScope = PlaylistScope.fromId(playlistScopeId),
     )
     val normalizedSettings = settings.copy(
         refreshIntervalHours = SettingsRepository.normalizeRefreshIntervalHours(settings.refreshIntervalHours),
@@ -116,6 +119,7 @@ fun SettingsScreen(
     LaunchedEffect(settings) {
         autoRefresh = settings.autoRefresh
         refreshIntervalText = settings.refreshIntervalHours.toString()
+        playlistScopeId = settings.playlistScope.id
     }
 
     val platformDensity = LocalDensity.current
@@ -151,6 +155,8 @@ fun SettingsScreen(
                     hasUnsavedChanges = hasUnsavedChanges,
                     autoRefresh = autoRefresh,
                     onAutoRefreshChange = { autoRefresh = it },
+                    playlistScope = draftSettings.playlistScope,
+                    onPlaylistScopeChange = { playlistScopeId = it.id },
                     refreshInterval = refreshInterval,
                     refreshIntervalText = refreshIntervalText,
                     onRefreshIntervalTextChange = { refreshIntervalText = it.filter(Char::isDigit).take(2) },
@@ -351,6 +357,8 @@ private fun SettingsContentPane(
     hasUnsavedChanges: Boolean,
     autoRefresh: Boolean,
     onAutoRefreshChange: (Boolean) -> Unit,
+    playlistScope: PlaylistScope,
+    onPlaylistScopeChange: (PlaylistScope) -> Unit,
     refreshInterval: Int,
     refreshIntervalText: String,
     onRefreshIntervalTextChange: (String) -> Unit,
@@ -380,6 +388,8 @@ private fun SettingsContentPane(
         )
         when (selectedSpec.menu) {
             SettingsMenu.Source -> SourceSettingsContent(
+                playlistScope = playlistScope,
+                onPlaylistScopeChange = onPlaylistScopeChange,
                 effectiveEpgUrl = effectiveEpgUrl,
                 onTestDefaultPlaylistSource = onTestDefaultPlaylistSource,
                 onTestActiveEpgSource = onTestActiveEpgSource,
@@ -439,6 +449,8 @@ private fun ContentHeader(spec: SettingsMenuSpec, status: StatusVisual) {
 
 @Composable
 private fun SourceSettingsContent(
+    playlistScope: PlaylistScope,
+    onPlaylistScopeChange: (PlaylistScope) -> Unit,
     effectiveEpgUrl: String?,
     onTestDefaultPlaylistSource: () -> Unit,
     onTestActiveEpgSource: () -> Unit,
@@ -446,10 +458,15 @@ private fun SourceSettingsContent(
     SettingsCardGrid { cardWidth ->
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(SettingsGridGap)) {
+                PlaylistScopeCard(
+                    selectedScope = playlistScope,
+                    onScopeChange = onPlaylistScopeChange,
+                    modifier = Modifier.width(cardWidth),
+                )
                 SourceStatusCard(
-                    title = "默认 playlist",
-                    note = "iptv-org 开源频道索引",
-                    url = AppConstants.PRIMARY_PLAYLIST_URL,
+                    title = "当前 playlist",
+                    note = playlistScope.description,
+                    url = playlistScope.playlistUrl,
                     enabled = true,
                     actionText = "测试源",
                     onAction = onTestDefaultPlaylistSource,
@@ -464,19 +481,46 @@ private fun SourceSettingsContent(
                     onAction = onTestActiveEpgSource,
                     modifier = Modifier.width(cardWidth),
                 )
-                SettingsValueCard(
-                    title = "EPG / API",
-                    description = "开源节目单与元数据",
-                    value = "github.com/iptv-org/epg · github.com/iptv-org/api",
-                    modifier = Modifier.width(cardWidth),
-                )
                 SettingsTextCard(
                     title = "数据策略",
-                    description = "频道和节目单只使用开源项目默认来源，不再提供手动添加数据源。",
+                    description = "频道范围只使用 iptv-org 官方预设，不提供手动输入源。",
                     modifier = Modifier.width(cardWidth),
                 )
             }
-            SettingsHintText("所有频道数据来自开源项目；如果需要缩小国家、语言或分类范围，后续单独做官方源范围选择器。")
+            SettingsHintText("切换频道范围后点击保存，应用会重新同步频道和节目单。")
+        }
+    }
+}
+
+@Composable
+private fun PlaylistScopeCard(
+    selectedScope: PlaylistScope,
+    onScopeChange: (PlaylistScope) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scopes = PlaylistScope.entries
+    val currentIndex = scopes.indexOf(selectedScope).coerceAtLeast(0)
+    SettingsCard(modifier = modifier) {
+        SettingsCardTitle(title = "频道范围", description = selectedScope.description)
+        Text(
+            text = selectedScope.label,
+            color = WhaleTokens.Cyan,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SettingsSmallButton(
+                text = "上一个",
+                enabled = currentIndex > 0,
+                onClick = { onScopeChange(scopes[currentIndex - 1]) },
+            )
+            SettingsSmallButton(
+                text = "下一个",
+                enabled = currentIndex < scopes.lastIndex,
+                onClick = { onScopeChange(scopes[currentIndex + 1]) },
+            )
         }
     }
 }
@@ -668,8 +712,8 @@ private fun AboutSourcesContent() {
                     modifier = Modifier.width(cardWidth),
                 )
                 SettingsTextCard(
-                    title = "后续可做",
-                    description = "官方源范围选择器可以按国家、语言、分类或来源切换 playlist，但这会影响首页频道范围，建议单独做。",
+                    title = "频道范围",
+                    description = "可以在数据源页选择官方国家、语言或分类 playlist，同步后首页只显示该范围频道。",
                     modifier = Modifier.width(cardWidth),
                 )
             }
