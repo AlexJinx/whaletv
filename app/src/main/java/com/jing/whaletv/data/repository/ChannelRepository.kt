@@ -24,8 +24,8 @@ import com.jing.whaletv.data.parser.EpgGuideSource
 import com.jing.whaletv.data.parser.EpgGuideSourceParser
 import com.jing.whaletv.data.parser.M3uParser
 import com.jing.whaletv.data.parser.XmltvParser
-import java.net.URI
 import java.io.StringReader
+import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -216,24 +216,13 @@ class ChannelRepository(
     }
 
     private suspend fun testEpgUrls(urls: List<String>, allowedChannelIds: Set<String>): SettingsTestResult = withContext(Dispatchers.Default) {
-        runCatching {
-            val programs = urls
-                .take(EPG_TEST_SOURCE_LIMIT)
-                .flatMap { url ->
-                    val result = playlistClient.fetchText(url = url)
-                    xmltvParser.parse(StringReader((result as FetchResult.Success).body), allowedChannelIds)
-                }
-                .distinctBy { Triple(it.channelId, it.startAt, it.title) }
-            when {
-                programs.isEmpty() -> SettingsTestResult(false, "节目单可解析，但没有匹配当前频道")
-                else -> SettingsTestResult(
-                    true,
-                    "节目单可用：${programs.map { it.channelId }.distinct().size} 个频道，${programs.size} 条节目",
-                )
-            }
-        }.getOrElse { error ->
-            SettingsTestResult(false, "测试节目单失败：${error.userFacingMessage()}")
-        }
+        testEpgSourceUrls(
+            urls = urls,
+            allowedChannelIds = allowedChannelIds,
+            sourceLimit = EPG_TEST_SOURCE_LIMIT,
+            fetchText = { url -> playlistClient.fetchText(url = url) },
+            xmltvParser = xmltvParser,
+        )
     }
 
     suspend fun resetStreamHealth() = withContext(Dispatchers.Default) {
@@ -482,7 +471,7 @@ class ChannelRepository(
             ?.trim()
             ?.takeIf(::isHttpUrl)
         val guideSources = discoverOfficialGuideSources(channelIds)
-        val selectedGuideSources = selectGuideSources(guideSources)
+        val selectedGuideSources = selectGuideSourcesForFetch(guideSources, EPG_GUIDE_SOURCE_FETCH_LIMIT)
         val guideSampleChannels = guideSources
             .map { it.channelId }
             .distinct()
@@ -502,59 +491,14 @@ class ChannelRepository(
     }
 
     private suspend fun discoverOfficialGuideSources(channelIds: Set<String>): List<EpgGuideSource> {
-        if (channelIds.isEmpty()) return emptyList()
-        val cached = readCachedGuideSources(channelIds)
-
-        return runCatching {
-            when (
-                val result = playlistClient.fetchText(
-                    url = AppConstants.IPTV_ORG_GUIDES_API_URL,
-                    etag = syncStateDao.getValue("$KEY_EPG_GUIDES.etag"),
-                    lastModified = syncStateDao.getValue("$KEY_EPG_GUIDES.last_modified"),
-                )
-            ) {
-                FetchResult.NotModified -> cached
-                is FetchResult.Success -> {
-                    saveHttpCacheHeaders(KEY_EPG_GUIDES, result)
-                    val parsed = epgGuideSourceParser.parse(result.body, channelIds)
-                    saveCachedGuideSources(parsed)
-                    parsed
-                }
-            }
-        }.getOrElse {
-            cached
-        }
-    }
-
-    private fun selectGuideSources(sources: List<EpgGuideSource>): List<EpgGuideSource> {
-        return sources
-            .sortedWith(compareBy<EpgGuideSource> { it.channelId }.thenBy { epgSourceUrlPriority(it.url) }.thenBy { it.url })
-            .distinctBy { it.url }
-            .take(EPG_GUIDE_SOURCE_FETCH_LIMIT)
-    }
-
-    private suspend fun readCachedGuideSources(channelIds: Set<String>): List<EpgGuideSource> {
-        return syncStateDao.getValue(KEY_EPG_GUIDE_SOURCE_CACHE)
-            ?.lineSequence()
-            ?.mapNotNull { line ->
-                val channelId = line.substringBefore('\t').trim()
-                val url = line.substringAfter('\t', "").trim()
-                if (channelId in channelIds && isHttpUrl(url)) {
-                    EpgGuideSource(channelId = channelId, url = url, site = null, language = null)
-                } else {
-                    null
-                }
-            }
-            ?.toList()
-            .orEmpty()
-    }
-
-    private suspend fun saveCachedGuideSources(sources: List<EpgGuideSource>) {
-        val value = selectGuideSources(sources)
-            .take(EPG_GUIDE_SOURCE_CACHE_LIMIT)
-            .joinToString("\n") { "${it.channelId}\t${it.url}" }
-            .ifBlank { null }
-        setState(KEY_EPG_GUIDE_SOURCE_CACHE, value)
+        return EpgGuideSourceDiscovery(
+            fetchText = { url, etag, lastModified ->
+                playlistClient.fetchText(url = url, etag = etag, lastModified = lastModified)
+            },
+            readState = { key -> syncStateDao.getValue(key) },
+            writeState = { key, value -> setState(key, value) },
+            parser = epgGuideSourceParser,
+        ).discover(channelIds)
     }
 
     private suspend fun fetchEpgSource(url: String, useCacheHeaders: Boolean): FetchResult {
@@ -572,14 +516,6 @@ class ChannelRepository(
 
     private fun epgSourceCacheKey(url: String): String {
         return "$KEY_EPG.${url.hashCode().toUInt().toString(16)}"
-    }
-
-    private fun epgSourceUrlPriority(url: String): Int {
-        return when {
-            url.endsWith(".xml.gz", ignoreCase = true) -> 0
-            url.endsWith(".xml", ignoreCase = true) -> 1
-            else -> 2
-        }
     }
 
     private suspend fun markStreamSucceeded(stream: TvStream) {
@@ -718,21 +654,17 @@ class ChannelRepository(
         const val KEY_FULL_PLAYLIST_ATTEMPT = "playlist.full.last_attempt_at"
         const val KEY_FULL_PLAYLIST_ERROR = "playlist.full.last_error"
         const val KEY_EPG = "epg"
-        const val KEY_EPG_GUIDES = "epg.guides"
         const val KEY_EPG_ATTEMPT = "epg.last_attempt_at"
         const val KEY_EPG_SUCCESS = "epg.last_success_at"
         const val KEY_EPG_ERROR = "epg.last_error"
         const val KEY_DISCOVERED_EPG_URL = "epg.discovered_url"
         const val KEY_EPG_GUIDE_SOURCE_COUNT = "epg.guide_source_count"
         const val KEY_EPG_GUIDE_SAMPLE_CHANNELS = "epg.guide_sample_channels"
-        const val KEY_EPG_GUIDE_SOURCE_CACHE = "epg.guide_source_cache"
         const val ONE_HOUR_MS = 60 * 60 * 1000L
         const val STARTUP_STREAM_PRECHECK_TIMEOUT_MS = 1_000L
         const val STARTUP_STREAM_PRECHECK_CONCURRENCY = 4
         const val STARTUP_STREAM_PRECHECK_LIMIT = 80
         const val SQLITE_BIND_PARAMETER_BATCH_SIZE = 900
-        const val EPG_GUIDE_SOURCE_FETCH_LIMIT = 6
-        const val EPG_GUIDE_SOURCE_CACHE_LIMIT = 80
         const val EPG_TOTAL_SOURCE_FETCH_LIMIT = 8
         const val EPG_TEST_SOURCE_LIMIT = 4
         const val EPG_SETTINGS_SAMPLE_CHANNEL_LIMIT = 6
@@ -788,6 +720,55 @@ internal fun missingChannelHandlingForSync(scope: PlaylistScope, mode: PlaylistS
 
 private fun Throwable.userFacingMessage(): String {
     return message?.takeIf { it.isNotBlank() } ?: this::class.java.simpleName
+}
+
+internal suspend fun testEpgSourceUrls(
+    urls: List<String>,
+    allowedChannelIds: Set<String>,
+    sourceLimit: Int,
+    fetchText: suspend (String) -> FetchResult,
+    xmltvParser: XmltvParser = XmltvParser(),
+): SettingsTestResult = withContext(Dispatchers.Default) {
+    val testUrls = urls.take(sourceLimit)
+    if (testUrls.isEmpty()) {
+        return@withContext SettingsTestResult(false, "尚未发现可用节目单地址，请先立即刷新")
+    }
+
+    val programs = mutableListOf<Program>()
+    var readableSourceCount = 0
+    var failureCount = 0
+    var lastError: Throwable? = null
+
+    testUrls.forEach { url ->
+        runCatching {
+            when (val result = fetchText(url)) {
+                FetchResult.NotModified -> emptyList()
+                is FetchResult.Success -> {
+                    readableSourceCount += 1
+                    xmltvParser.parse(StringReader(result.body), allowedChannelIds)
+                }
+            }
+        }.onSuccess { parsed ->
+            programs += parsed
+        }.onFailure { error ->
+            failureCount += 1
+            lastError = error
+        }
+    }
+
+    val distinctPrograms = programs.distinctBy { Triple(it.channelId, it.startAt, it.title) }
+    when {
+        distinctPrograms.isNotEmpty() -> SettingsTestResult(
+            true,
+            "节目单可用：${distinctPrograms.map { it.channelId }.distinct().size} 个频道，${distinctPrograms.size} 条节目",
+        )
+        failureCount == testUrls.size -> SettingsTestResult(
+            false,
+            "测试节目单失败：${lastError?.userFacingMessage() ?: "未知错误"}",
+        )
+        readableSourceCount == 0 -> SettingsTestResult(false, "测试节目单失败：没有返回节目单内容")
+        else -> SettingsTestResult(false, "节目单可解析，但没有匹配当前频道")
+    }
 }
 
 private fun Program.toEntity(): ProgramEntity = ProgramEntity(

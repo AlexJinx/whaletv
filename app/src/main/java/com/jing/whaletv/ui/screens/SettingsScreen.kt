@@ -369,6 +369,7 @@ private fun SettingsContentPane(
         when (selectedSpec.menu) {
             SettingsMenu.Source -> SourceSettingsContent(
                 playlistScope = playlistScope,
+                syncSummary = syncSummary,
                 onPlaylistScopeChange = onPlaylistScopeChange,
                 effectiveEpgUrl = effectiveEpgUrl,
                 onTestDefaultPlaylistSource = onTestDefaultPlaylistSource,
@@ -376,7 +377,6 @@ private fun SettingsContentPane(
             )
             SettingsMenu.Epg -> EpgSettingsContent(
                 effectiveEpgUrl = effectiveEpgUrl,
-                discoveredEpgUrl = syncSummary.discoveredEpgUrl,
                 syncSummary = syncSummary,
                 diagnostics = diagnostics,
                 onTestActiveEpgSource = onTestActiveEpgSource,
@@ -432,11 +432,13 @@ private fun ContentHeader(spec: SettingsMenuSpec, status: StatusVisual?) {
 @Composable
 private fun SourceSettingsContent(
     playlistScope: PlaylistScope,
+    syncSummary: SyncSummary,
     onPlaylistScopeChange: (PlaylistScope) -> Unit,
     effectiveEpgUrl: String?,
     onTestDefaultPlaylistSource: () -> Unit,
     onTestActiveEpgSource: () -> Unit,
 ) {
+    val epgSourceState = settingsEpgSourceState(effectiveEpgUrl, syncSummary)
     SettingsCardStack {
         SettingsCardRow(height = SettingsBalancedRowHeight) {
             PlaylistScopeCard(
@@ -470,9 +472,9 @@ private fun SourceSettingsContent(
         SettingsCardRow(height = SettingsUrlRowHeight) {
             SourceStatusCard(
                 title = "当前 EPG",
-                note = "来自 playlist 自动发现",
-                url = effectiveEpgUrl ?: "尚未发现 x-tvg-url",
-                enabled = !effectiveEpgUrl.isNullOrBlank(),
+                note = epgSourceState.note,
+                url = epgSourceState.value,
+                enabled = epgSourceState.canTest,
                 actionText = "测试节目单",
                 onAction = onTestActiveEpgSource,
                 modifier = Modifier
@@ -528,21 +530,18 @@ private fun PlaylistScopeCard(
 @Composable
 private fun EpgSettingsContent(
     effectiveEpgUrl: String?,
-    discoveredEpgUrl: String?,
     syncSummary: SyncSummary,
     diagnostics: SettingsDiagnostics,
     onTestActiveEpgSource: () -> Unit,
 ) {
+    val epgSourceState = settingsEpgSourceState(effectiveEpgUrl, syncSummary)
     SettingsCardStack {
         SettingsCardRow(height = SettingsUrlRowHeight) {
             SourceStatusCard(
                 title = "当前生效 EPG",
-                note = when {
-                    !discoveredEpgUrl.isNullOrBlank() -> "来自 playlist 自动发现"
-                    else -> "尚未发现节目单地址"
-                },
-                url = effectiveEpgUrl ?: "playlist 暂未发现 x-tvg-url",
-                enabled = !effectiveEpgUrl.isNullOrBlank() || syncSummary.epgGuideSourceCount > 0,
+                note = epgSourceState.note,
+                url = epgSourceState.value,
+                enabled = epgSourceState.canTest,
                 actionText = "测试节目单",
                 onAction = onTestActiveEpgSource,
                 modifier = Modifier
@@ -1394,6 +1393,34 @@ internal fun epgSampleChannelsText(channelIds: List<String>): String {
 
 internal fun epgGuideCandidateText(syncSummary: SyncSummary): String {
     return "${syncSummary.epgGuideSourceCount} 个直接来源"
+}
+
+internal data class SettingsEpgSourceState(
+    val note: String,
+    val value: String,
+    val canTest: Boolean,
+)
+
+internal fun settingsEpgSourceState(effectiveEpgUrl: String?, syncSummary: SyncSummary): SettingsEpgSourceState {
+    val playlistUrl = effectiveEpgUrl?.takeIf { it.isNotBlank() }
+    val guideSourceCount = syncSummary.epgGuideSourceCount
+    return when {
+        playlistUrl != null -> SettingsEpgSourceState(
+            note = "来自 playlist 自动发现",
+            value = playlistUrl,
+            canTest = true,
+        )
+        guideSourceCount > 0 -> SettingsEpgSourceState(
+            note = "来自 iptv-org 官方候选",
+            value = "官方候选：$guideSourceCount 个直接来源",
+            canTest = true,
+        )
+        else -> SettingsEpgSourceState(
+            note = "尚未发现节目单地址",
+            value = "playlist 暂未发现 x-tvg-url",
+            canTest = false,
+        )
+    }
 }
 
 private fun formatSyncTime(value: Long): String {
