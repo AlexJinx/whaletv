@@ -69,3 +69,5 @@
 - If the change includes background logic, explain its purpose in plain language instead of only naming classes or technical APIs.
 - If the working tree includes older uncommitted changes, distinguish the current change from previous leftover changes.
 - Keep file references as supporting detail after the plain-language product explanation, not as the main explanation.
+- After every completed task, tell the user what this task actually changed.
+- Explain the changes using a simple and easy-to-understand method, avoiding only listing file names, class names, or technical terms.
