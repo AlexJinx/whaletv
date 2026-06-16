@@ -127,8 +127,8 @@ class MainViewModel(
     fun refreshNow() {
         viewModelScope.launch {
             runSync(
-                startMessage = "正在刷新频道",
-                successMessage = "频道与节目单已更新",
+                startMessage = "正在优先更新频道",
+                successMessage = "优先频道和节目单已更新",
                 failurePrefix = "刷新失败",
             )
         }
@@ -168,8 +168,8 @@ class MainViewModel(
     fun refreshSettingsNow() {
         viewModelScope.launch {
             runSync(
-                startMessage = "正在刷新数据源",
-                successMessage = "数据源已刷新",
+                startMessage = "正在优先更新数据源",
+                successMessage = "优先数据源已更新",
                 failurePrefix = "刷新失败",
             )
         }
@@ -186,8 +186,8 @@ class MainViewModel(
             }
             if (saved.playlistScope != previous.playlistScope) {
                 runSync(
-                    startMessage = "正在切换频道范围",
-                    successMessage = "频道范围已更新",
+                    startMessage = "正在优先更新${saved.playlistScope.label}",
+                    successMessage = "优先更新范围已更新",
                     failurePrefix = "切换失败",
                 )
             } else {
@@ -258,8 +258,8 @@ class MainViewModel(
         viewModelScope.launch {
             if (container.channelRepository.hasCachedPlayableChannels()) return@launch
             runSync(
-                startMessage = "正在同步频道",
-                successMessage = "频道已同步",
+                startMessage = "正在优先更新频道",
+                successMessage = "优先频道已更新",
                 failurePrefix = "同步失败",
             )
         }
@@ -287,7 +287,12 @@ class MainViewModel(
             try {
                 container.channelRepository.syncPlaylists()
                 container.channelRepository.syncEpg()
-                message.value = successMessage
+                if (container.channelRepository.shouldBackfillAllPlaylists()) {
+                    SyncScheduler.enqueueFullBackfill(container.appContext)
+                    message.value = "$successMessage，后台补全全部频道中"
+                } else {
+                    message.value = successMessage
+                }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 message.value = "$failurePrefix：${error.userFacingMessage()}"

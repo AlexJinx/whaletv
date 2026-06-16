@@ -86,6 +86,9 @@ class ChannelRepository(
                 playlistLastAttemptAt = values[KEY_PLAYLIST_ATTEMPT]?.toLongOrNull(),
                 playlistLastSuccessAt = values[KEY_PLAYLIST_SUCCESS]?.toLongOrNull(),
                 playlistLastError = values[KEY_PLAYLIST_ERROR],
+                fullPlaylistLastAttemptAt = values[KEY_FULL_PLAYLIST_ATTEMPT]?.toLongOrNull(),
+                fullPlaylistLastSuccessAt = values[KEY_FULL_PLAYLIST_SUCCESS]?.toLongOrNull(),
+                fullPlaylistLastError = values[KEY_FULL_PLAYLIST_ERROR],
                 epgLastAttemptAt = values[KEY_EPG_ATTEMPT]?.toLongOrNull(),
                 epgLastSuccessAt = values[KEY_EPG_SUCCESS]?.toLongOrNull(),
                 epgLastError = values[KEY_EPG_ERROR],
@@ -248,11 +251,30 @@ class ChannelRepository(
         channelDao.clearWatchHistory()
     }
 
-    suspend fun syncPlaylists() = withContext(Dispatchers.Default) {
+    suspend fun shouldBackfillAllPlaylists(): Boolean {
+        return shouldBackfillAllForScope(settingsRepository.settings.first().playlistScope)
+    }
+
+    suspend fun backfillAllPlaylistsIfNeeded(): Boolean {
+        if (!shouldBackfillAllPlaylists()) return false
+        syncAllPlaylists()
+        return true
+    }
+
+    suspend fun syncPlaylists() {
+        syncPlaylistSources(mode = PlaylistSyncMode.PRIORITY)
+    }
+
+    suspend fun syncAllPlaylists() {
+        syncPlaylistSources(mode = PlaylistSyncMode.ALL_BACKFILL)
+    }
+
+    private suspend fun syncPlaylistSources(mode: PlaylistSyncMode) = withContext(Dispatchers.Default) {
         playlistSyncMutex.withLock {
-            setState(KEY_PLAYLIST_ATTEMPT, System.currentTimeMillis().toString())
             val playlistScope = settingsRepository.settings.first().playlistScope
-            val sources = listOf(Source(playlistScope.cacheKey(), playlistUrlForScope(playlistScope)))
+            val stateKeys = playlistSyncStateKeys(mode)
+            val sources = playlistSourcesForSync(playlistScope, mode)
+            setState(stateKeys.attempt, System.currentTimeMillis().toString())
 
             val parsed = mutableListOf<ParsedChannel>()
             var notModifiedCount = 0
@@ -261,10 +283,13 @@ class ChannelRepository(
                 healthyStatus = StreamHealth.HEALTHY.name,
                 unknownStatus = StreamHealth.UNKNOWN.name,
             ) > 0
+            val useCacheHeaders = mode == PlaylistSyncMode.PRIORITY &&
+                playlistScope == PlaylistScope.ALL &&
+                hasCachedChannels
 
             try {
                 sources.forEach { source ->
-                    when (val result = fetchSource(source, useCacheHeaders = hasCachedChannels)) {
+                    when (val result = fetchSource(source, useCacheHeaders = useCacheHeaders)) {
                         FetchResult.NotModified -> notModifiedCount += 1
                         is FetchResult.Success -> {
                             successCount += 1
@@ -280,17 +305,19 @@ class ChannelRepository(
                 if (parsed.isNotEmpty()) {
                     importParsedChannels(
                         channels = parsed,
-                        markMissingUnavailable = notModifiedCount == 0,
+                        missingChannelHandling = missingChannelHandlingForSync(playlistScope, mode),
                     )
                 }
 
                 if (successCount > 0 || notModifiedCount > 0) {
-                    restorePlaylistPlayableState()
-                    setState(KEY_PLAYLIST_SUCCESS, System.currentTimeMillis().toString())
-                    setState(KEY_PLAYLIST_ERROR, null)
+                    if (mode == PlaylistSyncMode.ALL_BACKFILL || playlistScope == PlaylistScope.ALL) {
+                        restorePlaylistPlayableState()
+                    }
+                    setState(stateKeys.success, System.currentTimeMillis().toString())
+                    setState(stateKeys.error, null)
                 }
             } catch (error: Throwable) {
-                setState(KEY_PLAYLIST_ERROR, error.message ?: error::class.java.simpleName)
+                setState(stateKeys.error, error.message ?: error::class.java.simpleName)
                 throw error
             }
         }
@@ -567,7 +594,7 @@ class ChannelRepository(
         }
     }
 
-    private suspend fun fetchSource(source: Source, useCacheHeaders: Boolean = true): FetchResult {
+    private suspend fun fetchSource(source: PlaylistSource, useCacheHeaders: Boolean = true): FetchResult {
         val cacheKey = source.cacheKey()
         return playlistClient.fetchText(
             url = source.url,
@@ -581,7 +608,7 @@ class ChannelRepository(
         setState("$sourceKey.last_modified", result.lastModified)
     }
 
-    private suspend fun importParsedChannels(channels: List<ParsedChannel>, markMissingUnavailable: Boolean) {
+    private suspend fun importParsedChannels(channels: List<ParsedChannel>, missingChannelHandling: MissingChannelHandling) {
         val now = System.currentTimeMillis()
         val distinctChannels = channels
             .groupBy { it.id }
@@ -627,7 +654,7 @@ class ChannelRepository(
         }
         val freshIds = distinctChannels.map { it.id }
         val freshIdSet = freshIds.toSet()
-        val missingIds = if (markMissingUnavailable) {
+        val missingIds = if (missingChannelHandling != MissingChannelHandling.KEEP_AVAILABLE_STATE) {
             existingChannels.keys.filterNot { it in freshIdSet }
         } else {
             emptyList()
@@ -635,7 +662,9 @@ class ChannelRepository(
 
         database.withTransaction {
             missingIds.chunked(SQLITE_BIND_PARAMETER_BATCH_SIZE).forEach { chunk ->
-                channelDao.deleteStreamsForChannels(chunk)
+                if (missingChannelHandling == MissingChannelHandling.MARK_UNAVAILABLE_AND_DELETE_STREAMS) {
+                    channelDao.deleteStreamsForChannels(chunk)
+                }
                 channelDao.markChannelsUnavailable(chunk)
             }
             channelDao.upsertChannels(channelEntities)
@@ -656,18 +685,38 @@ class ChannelRepository(
         syncStateDao.setValue(SyncStateEntity(key = key, value = value))
     }
 
-    private data class Source(val key: String, val url: String) {
-        fun cacheKey(): String = "$key.${url.hashCode().toUInt().toString(16)}"
-    }
-
     private data class EpgSourceResolution(
         val urls: List<String>,
     )
+
+    private data class PlaylistSyncStateKeys(
+        val attempt: String,
+        val success: String,
+        val error: String,
+    )
+
+    private fun playlistSyncStateKeys(mode: PlaylistSyncMode): PlaylistSyncStateKeys {
+        return when (mode) {
+            PlaylistSyncMode.PRIORITY -> PlaylistSyncStateKeys(
+                attempt = KEY_PLAYLIST_ATTEMPT,
+                success = KEY_PLAYLIST_SUCCESS,
+                error = KEY_PLAYLIST_ERROR,
+            )
+            PlaylistSyncMode.ALL_BACKFILL -> PlaylistSyncStateKeys(
+                attempt = KEY_FULL_PLAYLIST_ATTEMPT,
+                success = KEY_FULL_PLAYLIST_SUCCESS,
+                error = KEY_FULL_PLAYLIST_ERROR,
+            )
+        }
+    }
 
     private companion object {
         const val KEY_PLAYLIST_SUCCESS = "playlist.last_success_at"
         const val KEY_PLAYLIST_ATTEMPT = "playlist.last_attempt_at"
         const val KEY_PLAYLIST_ERROR = "playlist.last_error"
+        const val KEY_FULL_PLAYLIST_SUCCESS = "playlist.full.last_success_at"
+        const val KEY_FULL_PLAYLIST_ATTEMPT = "playlist.full.last_attempt_at"
+        const val KEY_FULL_PLAYLIST_ERROR = "playlist.full.last_error"
         const val KEY_EPG = "epg"
         const val KEY_EPG_GUIDES = "epg.guides"
         const val KEY_EPG_ATTEMPT = "epg.last_attempt_at"
@@ -690,6 +739,21 @@ class ChannelRepository(
     }
 }
 
+internal enum class PlaylistSyncMode {
+    PRIORITY,
+    ALL_BACKFILL,
+}
+
+internal enum class MissingChannelHandling {
+    KEEP_AVAILABLE_STATE,
+    MARK_UNAVAILABLE,
+    MARK_UNAVAILABLE_AND_DELETE_STREAMS,
+}
+
+internal data class PlaylistSource(val key: String, val url: String) {
+    fun cacheKey(): String = "$key.${url.hashCode().toUInt().toString(16)}"
+}
+
 private fun parseStoredList(value: String?): List<String> {
     return value
         ?.split(',')
@@ -701,6 +765,26 @@ private fun parseStoredList(value: String?): List<String> {
 internal fun PlaylistScope.cacheKey(): String = "scope.$id"
 
 internal fun playlistUrlForScope(scope: PlaylistScope): String = scope.playlistUrl
+
+internal fun shouldBackfillAllForScope(scope: PlaylistScope): Boolean {
+    return scope != PlaylistScope.ALL
+}
+
+internal fun playlistSourcesForSync(scope: PlaylistScope, mode: PlaylistSyncMode): List<PlaylistSource> {
+    val sourceScope = when (mode) {
+        PlaylistSyncMode.PRIORITY -> scope
+        PlaylistSyncMode.ALL_BACKFILL -> PlaylistScope.ALL
+    }
+    return listOf(PlaylistSource(sourceScope.cacheKey(), playlistUrlForScope(sourceScope)))
+}
+
+internal fun missingChannelHandlingForSync(scope: PlaylistScope, mode: PlaylistSyncMode): MissingChannelHandling {
+    return when {
+        mode == PlaylistSyncMode.ALL_BACKFILL -> MissingChannelHandling.MARK_UNAVAILABLE_AND_DELETE_STREAMS
+        scope == PlaylistScope.ALL -> MissingChannelHandling.MARK_UNAVAILABLE_AND_DELETE_STREAMS
+        else -> MissingChannelHandling.MARK_UNAVAILABLE
+    }
+}
 
 private fun Throwable.userFacingMessage(): String {
     return message?.takeIf { it.isNotBlank() } ?: this::class.java.simpleName

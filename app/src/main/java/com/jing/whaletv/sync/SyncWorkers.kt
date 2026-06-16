@@ -54,6 +54,30 @@ class EpgSyncWorker(
     }
 }
 
+class FullPlaylistBackfillWorker(
+    appContext: Context,
+    params: WorkerParameters,
+) : CoroutineWorker(appContext, params) {
+    override suspend fun doWork(): Result {
+        return try {
+            Log.i(TAG, "Starting full playlist backfill. attempt=${runAttemptCount + 1}")
+            val didBackfill = container().channelRepository.backfillAllPlaylistsIfNeeded()
+            if (didBackfill) {
+                container().channelRepository.syncEpg()
+                Log.i(TAG, "Full playlist backfill finished.")
+            } else {
+                Log.i(TAG, "Full playlist backfill skipped for all-channel scope.")
+            }
+            Result.success()
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            val shouldRetry = runAttemptCount < 2
+            Log.e(TAG, "Full playlist backfill failed. retry=$shouldRetry reason=${error.message}", error)
+            if (shouldRetry) Result.retry() else Result.failure()
+        }
+    }
+}
+
 object SyncScheduler {
     fun schedulePeriodic(context: Context, intervalHours: Int) {
         val workManager = WorkManager.getInstance(context)
@@ -90,6 +114,9 @@ object SyncScheduler {
         val epgRequest = OneTimeWorkRequestBuilder<EpgSyncWorker>()
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
             .build()
+        val fullBackfillRequest = OneTimeWorkRequestBuilder<FullPlaylistBackfillWorker>()
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 8, TimeUnit.MINUTES)
+            .build()
 
         WorkManager.getInstance(context)
             .beginUniqueWork(
@@ -98,7 +125,21 @@ object SyncScheduler {
                 playlistRequest,
             )
             .then(epgRequest)
+            .then(fullBackfillRequest)
             .enqueue()
+    }
+
+    fun enqueueFullBackfill(context: Context) {
+        val request = OneTimeWorkRequestBuilder<FullPlaylistBackfillWorker>()
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 8, TimeUnit.MINUTES)
+            .build()
+
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(
+                PLAYLIST_FULL_BACKFILL,
+                ExistingWorkPolicy.KEEP,
+                request,
+            )
     }
 
     fun cancelPeriodic(context: Context) {
@@ -109,6 +150,7 @@ object SyncScheduler {
     private const val PLAYLIST_PERIODIC = "playlist_periodic_sync"
     private const val EPG_PERIODIC = "epg_periodic_sync"
     private const val PLAYLIST_IMMEDIATE = "playlist_immediate_sync"
+    private const val PLAYLIST_FULL_BACKFILL = "playlist_full_backfill_sync"
 }
 
 private const val TAG = "WhaleTvSync"
