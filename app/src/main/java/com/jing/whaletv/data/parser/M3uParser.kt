@@ -18,10 +18,9 @@ class M3uParser {
     }
 
     fun parse(content: String): List<ParsedChannel> {
-        groupByChannel.clear()
-        logoByChannel.clear()
-        nameByChannel.clear()
-
+        val groupByChannel = mutableMapOf<String, String>()
+        val logoByChannel = mutableMapOf<String, String?>()
+        val nameByChannel = mutableMapOf<String, String>()
         val streams = mutableListOf<ParsedStream>()
         var pendingInfo: PendingInfo? = null
         var pendingReferrer: String? = null
@@ -31,7 +30,12 @@ class M3uParser {
             val line = raw.trim()
             when {
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
-                    pendingInfo = parseInfo(line)
+                    pendingInfo = parseInfo(
+                        line = line,
+                        groupByChannel = groupByChannel,
+                        logoByChannel = logoByChannel,
+                        nameByChannel = nameByChannel,
+                    )
                     pendingReferrer = null
                     pendingUserAgent = null
                 }
@@ -71,21 +75,26 @@ class M3uParser {
                 ParsedChannel(
                     id = channelId,
                     name = first.label?.let { sanitizeName(it) }.takeUnless { it.isNullOrBlank() }
-                        ?: channelNameFromId(channelId),
-                    logoUrl = firstLabelLogo(channelId),
+                        ?: channelNameFromId(channelId, nameByChannel),
+                    logoUrl = firstLabelLogo(channelId, logoByChannel),
                     groupTitle = groupByChannel[channelId] ?: "Undefined",
-                    priority = ChannelClassifier.priority(channelId, channelNameFromId(channelId), groupByChannel[channelId] ?: ""),
+                    priority = ChannelClassifier.priority(
+                        channelId,
+                        channelNameFromId(channelId, nameByChannel),
+                        groupByChannel[channelId] ?: "",
+                    ),
                     streams = channelStreams.mapIndexed { index, stream -> stream.copy(sortOrder = index) },
                 )
             }
             .sortedWith(compareBy<ParsedChannel> { it.priority }.thenBy { it.name })
     }
 
-    private val groupByChannel = mutableMapOf<String, String>()
-    private val logoByChannel = mutableMapOf<String, String?>()
-    private val nameByChannel = mutableMapOf<String, String>()
-
-    private fun parseInfo(line: String): PendingInfo {
+    private fun parseInfo(
+        line: String,
+        groupByChannel: MutableMap<String, String>,
+        logoByChannel: MutableMap<String, String?>,
+        nameByChannel: MutableMap<String, String>,
+    ): PendingInfo {
         val attrs = parseAttributes(line)
         val rawName = line.substringAfterLast(",", "").trim()
         val cleanName = sanitizeName(rawName)
@@ -111,9 +120,13 @@ class M3uParser {
         return attributeRegex.findAll(line).associate { it.groupValues[1] to it.groupValues[2] }
     }
 
-    private fun channelNameFromId(id: String): String = nameByChannel[id] ?: id.substringBefore(".")
+    private fun channelNameFromId(id: String, nameByChannel: Map<String, String>): String {
+        return nameByChannel[id] ?: id.substringBefore(".")
+    }
 
-    private fun firstLabelLogo(id: String): String? = logoByChannel[id]
+    private fun firstLabelLogo(id: String, logoByChannel: Map<String, String?>): String? {
+        return logoByChannel[id]
+    }
 
     private fun normalizeChannelId(value: String): String {
         val withoutFeed = value.substringBefore("@").ifBlank { value }

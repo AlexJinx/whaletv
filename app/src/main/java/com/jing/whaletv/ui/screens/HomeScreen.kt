@@ -519,7 +519,6 @@ private fun homeGridItemsForCategory(
     val designFeatured = listOfNotNull(
         countryChannels.findById("cctv13.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
         countryChannels.findById("cgtn.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
-        xinhuaPlaceholderItem(),
         countryChannels.findById("phoenixinfonewschannel.hk")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
         countryChannels.findPreferredId("cctv4asia.cn", "cctv4america.cn", "cctv4europe.cn", "cctv4k.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
         countryChannels.findById("cctv1.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
@@ -538,20 +537,6 @@ private fun List<TvChannel>.findById(id: String): TvChannel? {
 
 private fun List<TvChannel>.findPreferredId(vararg ids: String): TvChannel? {
     return ids.firstNotNullOfOrNull { preferredId -> findById(preferredId) }
-}
-
-private fun xinhuaPlaceholderItem(): ChannelCardItem {
-    return ChannelCardItem(
-        key = "placeholder.xinhua.cn",
-        title = "新华社电视",
-        categoryLabel = "新闻",
-        logoLabel = "新华社",
-        qualityLabel = "高清",
-        sourceCount = 1,
-        hasEpg = true,
-        currentProgramTitle = null,
-        rank = 2,
-    )
 }
 
 private fun ChannelCardItem.withChinaNewsDesignMeta(): ChannelCardItem {
@@ -643,7 +628,8 @@ private fun ChannelContent(
             EmptyHomeState(modifier = Modifier.fillMaxSize())
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val cardHeight = ((maxHeight - HomeGridGap * (HOME_GRID_VISIBLE_ROWS - 1)) / HOME_GRID_VISIBLE_ROWS)
+                val visibleRows = if (maxHeight < 620.dp) 2 else HOME_GRID_VISIBLE_ROWS
+                val cardHeight = ((maxHeight - HomeGridGap * (visibleRows - 1)) / visibleRows)
                     .coerceAtLeast(1.dp)
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),

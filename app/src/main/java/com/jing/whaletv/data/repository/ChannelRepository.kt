@@ -16,6 +16,7 @@ import com.jing.whaletv.data.model.StreamHealth
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
+import com.jing.whaletv.data.model.streamHealthAfterFailure
 import com.jing.whaletv.data.network.FetchResult
 import com.jing.whaletv.data.network.PlaylistClient
 import com.jing.whaletv.data.parser.M3uParser
@@ -140,11 +141,12 @@ class ChannelRepository(
     suspend fun markPlaybackFailed(channelId: String, streamUrl: String) = withContext(Dispatchers.Default) {
         database.withTransaction {
             val current = channelDao.getStream(channelId, streamUrl) ?: return@withTransaction
+            val nextFailureCount = current.failureCount + 1
             channelDao.updateStreamFailure(
                 channelId = channelId,
                 url = streamUrl,
-                healthStatus = StreamHealth.UNKNOWN.name,
-                failureCount = current.failureCount + 1,
+                healthStatus = streamHealthAfterFailure(nextFailureCount).name,
+                failureCount = nextFailureCount,
                 failedAt = System.currentTimeMillis(),
             )
         }
@@ -366,7 +368,7 @@ class ChannelRepository(
                             label = stream.label,
                             referrer = stream.referrer,
                             userAgent = stream.userAgent,
-                            healthStatus = StreamHealth.UNKNOWN.name,
+                            healthStatus = streamHealthAfterFailure(nextFailureCount).name,
                             failureCount = nextFailureCount,
                             lastFailureAt = now,
                             sortOrder = stream.sortOrder,
@@ -377,7 +379,7 @@ class ChannelRepository(
                 channelDao.updateStreamFailure(
                     channelId = stream.channelId,
                     url = stream.url,
-                    healthStatus = StreamHealth.UNKNOWN.name,
+                    healthStatus = streamHealthAfterFailure(nextFailureCount).name,
                     failureCount = nextFailureCount,
                     failedAt = now,
                 )
@@ -484,9 +486,7 @@ class ChannelRepository(
                     label = stream.label,
                     referrer = stream.referrer,
                     userAgent = stream.userAgent,
-                    healthStatus = old?.healthStatus
-                        ?.takeUnless { it == StreamHealth.UNHEALTHY.name }
-                        ?: StreamHealth.UNKNOWN.name,
+                    healthStatus = old?.healthStatus ?: StreamHealth.UNKNOWN.name,
                     failureCount = old?.failureCount ?: 0,
                     lastFailureAt = old?.lastFailureAt,
                     lastSuccessAt = old?.lastSuccessAt,
@@ -517,10 +517,6 @@ class ChannelRepository(
 
     private suspend fun restorePlaylistPlayableState() {
         database.withTransaction {
-            channelDao.resetUnhealthyStreams(
-                unhealthyStatus = StreamHealth.UNHEALTHY.name,
-                unknownStatus = StreamHealth.UNKNOWN.name,
-            )
             channelDao.markChannelsWithStreamsAvailable()
         }
     }

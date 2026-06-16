@@ -358,7 +358,8 @@ private fun SearchResultsPane(
             )
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val cardHeight = ((maxHeight - SearchGridGap * (SEARCH_GRID_VISIBLE_ROWS - 1)) / SEARCH_GRID_VISIBLE_ROWS)
+                val visibleRows = if (maxHeight < 620.dp) 2 else SEARCH_GRID_VISIBLE_ROWS
+                val cardHeight = ((maxHeight - SearchGridGap * (visibleRows - 1)) / visibleRows)
                     .coerceAtLeast(1.dp)
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),

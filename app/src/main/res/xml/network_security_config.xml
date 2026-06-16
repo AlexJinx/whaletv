@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- IPTV MVP: public playlist streams often use http:// URLs. Revisit before public distribution. -->
+    <!-- IPTV streams often use http:// URLs. This is kept for channel coverage in internal builds. -->
+    <!-- Revisit before public store distribution because global cleartext traffic weakens transport security. -->
     <base-config cleartextTrafficPermitted="true" />
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">iptv-org.github.io</domain>

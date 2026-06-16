@@ -4,6 +4,7 @@ import java.net.URI
 import java.util.Locale
 
 private val PlaybackSupportedSchemes = setOf("http", "https", "rtsp")
+internal const val STREAM_UNHEALTHY_FAILURE_THRESHOLD = 3
 
 fun TvChannel.playbackStreams(): List<TvStream> {
     return streams
@@ -31,4 +32,12 @@ fun TvStream.isPlaybackSupported(): Boolean {
     return runCatching {
         URI(url).scheme?.lowercase(Locale.ROOT) in PlaybackSupportedSchemes
     }.getOrDefault(false)
+}
+
+internal fun streamHealthAfterFailure(failureCount: Int): StreamHealth {
+    return if (failureCount >= STREAM_UNHEALTHY_FAILURE_THRESHOLD) {
+        StreamHealth.UNHEALTHY
+    } else {
+        StreamHealth.UNKNOWN
+    }
 }

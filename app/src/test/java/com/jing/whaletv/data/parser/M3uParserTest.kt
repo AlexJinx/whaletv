@@ -83,4 +83,26 @@ class M3uParserTest {
         assertNotNull(channels.single().id)
         assertEquals("临时频道", channels.single().name)
     }
+
+    @Test
+    fun parse_doesNotCarryChannelMetadataAcrossCalls() {
+        val first = """
+            #EXTM3U
+            #EXTINF:-1 tvg-id="First.cn@HD" tvg-logo="https://example.com/first.png" group-title="News",First News
+            https://example.com/first.m3u8
+        """.trimIndent()
+        val second = """
+            #EXTM3U
+            #EXTINF:-1 tvg-id="Second.cn@HD" group-title="Sports",Second Sports
+            https://example.com/second.m3u8
+        """.trimIndent()
+
+        parser.parse(first)
+        val channel = parser.parse(second).single()
+
+        assertEquals("Second.cn", channel.id)
+        assertEquals("Sports", channel.groupTitle)
+        assertEquals(null, channel.logoUrl)
+        assertEquals("Second Sports", channel.name)
+    }
 }

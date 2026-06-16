@@ -74,6 +74,14 @@ class PlaybackStreamSelectorTest {
         assertFalse(stream(url = "udp://example.com/live").isPlaybackSupported())
     }
 
+    @Test
+    fun streamHealthAfterFailure_marksUnhealthyAtThreshold() {
+        assertEquals(StreamHealth.UNKNOWN, streamHealthAfterFailure(1))
+        assertEquals(StreamHealth.UNKNOWN, streamHealthAfterFailure(STREAM_UNHEALTHY_FAILURE_THRESHOLD - 1))
+        assertEquals(StreamHealth.UNHEALTHY, streamHealthAfterFailure(STREAM_UNHEALTHY_FAILURE_THRESHOLD))
+        assertEquals(StreamHealth.UNHEALTHY, streamHealthAfterFailure(STREAM_UNHEALTHY_FAILURE_THRESHOLD + 1))
+    }
+
     private fun channelWithStreams(vararg streams: TvStream): TvChannel {
         return TvChannel(
             id = "test.channel",
