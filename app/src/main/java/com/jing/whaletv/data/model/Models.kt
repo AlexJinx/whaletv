@@ -12,6 +12,7 @@ data class TvChannel(
     val streams: List<TvStream>,
     val currentProgram: Program?,
     val nextProgram: Program?,
+    val schedulePrograms: List<Program> = emptyList(),
 )
 
 data class TvStream(

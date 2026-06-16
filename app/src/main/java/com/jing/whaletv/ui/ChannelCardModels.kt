@@ -22,7 +22,7 @@ fun TvChannel.toChannelCardItem(): ChannelCardItem {
         logoLabel = homeLogoLabel(),
         qualityLabel = homeQualityLabel(),
         sourceCount = homePlayableSourceCount(),
-        hasEpg = currentProgram != null || nextProgram != null,
+        hasEpg = currentProgram != null || nextProgram != null || schedulePrograms.isNotEmpty(),
         currentProgramTitle = currentTitle(),
         rank = homeDesignRank(),
     )

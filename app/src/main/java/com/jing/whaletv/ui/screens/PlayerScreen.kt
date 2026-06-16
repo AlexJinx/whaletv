@@ -322,6 +322,7 @@ private fun PlayerOverlay(
         PlayerProgramOverlay(
             currentProgram = channel.currentProgram,
             nextProgram = channel.nextProgram,
+            schedulePrograms = channel.schedulePrograms,
             now = now,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -425,10 +426,16 @@ private fun PlayerInfoChip(text: String, color: Color) {
 private fun PlayerProgramOverlay(
     currentProgram: Program?,
     nextProgram: Program?,
+    schedulePrograms: List<Program>,
     now: Long,
     modifier: Modifier = Modifier,
 ) {
-    if (currentProgram == null && nextProgram == null) return
+    val upcomingPrograms = schedulePrograms
+        .filterNot { program -> currentProgram?.let { program.isSameScheduleProgram(it) } == true }
+        .ifEmpty { listOfNotNull(nextProgram) }
+        .distinctBy { "${it.channelId}|${it.startAt}|${it.title}" }
+        .take(PLAYER_SCHEDULE_UPCOMING_LIMIT)
+    if (currentProgram == null && upcomingPrograms.isEmpty()) return
 
     Column(
         modifier = modifier
@@ -472,15 +479,47 @@ private fun PlayerProgramOverlay(
                 }
             }
         }
-        nextProgram?.let { program ->
-            Text(
-                text = "接下来：${program.title}  ${programTimeRange(program)}",
-                color = WhaleTokens.SecondaryText,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        if (upcomingPrograms.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                upcomingPrograms.forEachIndexed { index, program ->
+                    PlayerScheduleRow(
+                        label = if (index == 0) "接下来" else "稍后",
+                        program = program,
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun PlayerScheduleRow(label: String, program: Program) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (label == "接下来") WhaleTokens.Cyan else WhaleTokens.TertiaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.width(48.dp),
+        )
+        Text(
+            text = programTimeRange(program),
+            color = WhaleTokens.TertiaryText,
+            fontSize = 12.sp,
+            modifier = Modifier.width(82.dp),
+        )
+        Text(
+            text = program.title,
+            color = WhaleTokens.SecondaryText,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -621,6 +660,10 @@ private fun programTimeRange(program: Program): String {
     return "${formatProgramTime(program.startAt)}-${formatProgramTime(program.endAt)}"
 }
 
+private fun Program.isSameScheduleProgram(other: Program): Boolean {
+    return channelId == other.channelId && startAt == other.startAt && title == other.title
+}
+
 private fun formatProgramTime(value: Long): String {
     return ProgramTimeFormatter.format(Instant.ofEpochMilli(value))
 }
@@ -644,3 +687,4 @@ private val ProgramTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private const val PLAYER_OVERLAY_AUTO_HIDE_MS = 5_000L
 private const val PROGRAM_PROGRESS_TICK_MS = 30_000L
+private const val PLAYER_SCHEDULE_UPCOMING_LIMIT = 5

@@ -1,9 +1,12 @@
 package com.jing.whaletv.ui
 
 import com.jing.whaletv.data.model.StreamHealth
+import com.jing.whaletv.data.model.Program
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TvDisplayModelsTest {
@@ -81,6 +84,30 @@ class TvDisplayModelsTest {
         assertEquals(null, sd.homeQualityLabel())
     }
 
+    @Test
+    fun channelCardItemOnlyShowsEpgWhenProgramsExist() {
+        assertFalse(channel(id = "cctv13.cn").toChannelCardItem().hasEpg)
+
+        assertTrue(
+            channel(
+                id = "current.cn",
+                currentProgram = program("正在播出"),
+            ).toChannelCardItem().hasEpg,
+        )
+        assertTrue(
+            channel(
+                id = "next.cn",
+                nextProgram = program("接下来"),
+            ).toChannelCardItem().hasEpg,
+        )
+        assertTrue(
+            channel(
+                id = "schedule.cn",
+                schedulePrograms = listOf(program("稍后")),
+            ).toChannelCardItem().hasEpg,
+        )
+    }
+
     private fun channel(
         id: String,
         name: String = "测试频道",
@@ -89,6 +116,9 @@ class TvDisplayModelsTest {
         watchedAt: Long? = null,
         health: StreamHealth = StreamHealth.UNKNOWN,
         streams: List<TvStream> = listOf(stream(id, "http://example.com/$id", health)),
+        currentProgram: Program? = null,
+        nextProgram: Program? = null,
+        schedulePrograms: List<Program> = emptyList(),
     ): TvChannel {
         return TvChannel(
             id = id,
@@ -100,10 +130,19 @@ class TvDisplayModelsTest {
             lastWatchedAt = watchedAt,
             isAvailable = true,
             streams = streams,
-            currentProgram = null,
-            nextProgram = null,
+            currentProgram = currentProgram,
+            nextProgram = nextProgram,
+            schedulePrograms = schedulePrograms,
         )
     }
+
+    private fun program(title: String): Program = Program(
+        channelId = "test.cn",
+        title = title,
+        startAt = 1_000L,
+        endAt = 2_000L,
+        description = null,
+    )
 
     private fun stream(
         channelId: String,

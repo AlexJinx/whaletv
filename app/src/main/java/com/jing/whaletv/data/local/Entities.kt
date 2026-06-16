@@ -76,12 +76,14 @@ data class ChannelWithStreams(
 
 fun ChannelWithStreams.toDomain(now: Long, programs: List<ProgramEntity>): TvChannel {
     val orderedPrograms = programs.sortedWith(compareBy({ it.startAt }, { it.endAt }))
-    val current = orderedPrograms
-        .lastOrNull { it.startAt <= now && it.endAt > now }
-        ?.toDomain()
-    val next = orderedPrograms
-        .firstOrNull { it.startAt > now }
-        ?.toDomain()
+    val currentEntity = orderedPrograms.lastOrNull { it.startAt <= now && it.endAt > now }
+    val nextEntity = orderedPrograms.firstOrNull { it.startAt > now }
+    val schedulePrograms = buildList {
+        currentEntity?.let(::add)
+        addAll(orderedPrograms.filter { it.startAt > now })
+    }
+        .take(CHANNEL_SCHEDULE_PROGRAM_LIMIT)
+        .map { it.toDomain() }
 
     return TvChannel(
         id = channel.id,
@@ -93,8 +95,9 @@ fun ChannelWithStreams.toDomain(now: Long, programs: List<ProgramEntity>): TvCha
         lastWatchedAt = channel.lastWatchedAt,
         isAvailable = channel.isAvailable,
         streams = streams.sortedWith(compareBy<StreamEntity> { it.sortOrder }.thenBy { it.url }).map { it.toDomain() },
-        currentProgram = current,
-        nextProgram = next,
+        currentProgram = currentEntity?.toDomain(),
+        nextProgram = nextEntity?.toDomain(),
+        schedulePrograms = schedulePrograms,
     )
 }
 
@@ -119,3 +122,5 @@ fun ProgramEntity.toDomain(): Program = Program(
     endAt = endAt,
     description = description,
 )
+
+private const val CHANNEL_SCHEDULE_PROGRAM_LIMIT = 6

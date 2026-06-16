@@ -541,17 +541,17 @@ private fun List<TvChannel>.findPreferredId(vararg ids: String): TvChannel? {
 
 private fun ChannelCardItem.withChinaNewsDesignMeta(): ChannelCardItem {
     return when (key.lowercase()) {
-        "cctv13.cn" -> copy(qualityLabel = "4K", sourceCount = 3, hasEpg = true)
-        "cgtn.cn" -> copy(qualityLabel = "高清", sourceCount = 2, hasEpg = true)
-        "phoenixinfonewschannel.hk" -> copy(qualityLabel = "高清", sourceCount = 4, hasEpg = false)
+        "cctv13.cn" -> copy(qualityLabel = "4K", sourceCount = 3)
+        "cgtn.cn" -> copy(qualityLabel = "高清", sourceCount = 2)
+        "phoenixinfonewschannel.hk" -> copy(qualityLabel = "高清", sourceCount = 4)
         "cctv4asia.cn",
         "cctv4america.cn",
         "cctv4europe.cn",
         "cctv4k.cn",
-        -> copy(qualityLabel = "高清", sourceCount = 5, hasEpg = true)
-        "cctv1.cn" -> copy(qualityLabel = "高清", sourceCount = 2, hasEpg = true)
-        "cctvplus1.cn" -> copy(qualityLabel = "高清", sourceCount = 3, hasEpg = false)
-        "cctvplus2.cn" -> copy(qualityLabel = "高清", sourceCount = 2, hasEpg = true)
+        -> copy(qualityLabel = "高清", sourceCount = 5)
+        "cctv1.cn" -> copy(qualityLabel = "高清", sourceCount = 2)
+        "cctvplus1.cn" -> copy(qualityLabel = "高清", sourceCount = 3)
+        "cctvplus2.cn" -> copy(qualityLabel = "高清", sourceCount = 2)
         else -> this
     }
 }
