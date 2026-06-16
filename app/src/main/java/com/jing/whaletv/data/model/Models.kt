@@ -66,6 +66,8 @@ data class SettingsDiagnostics(
     val playableChannelCount: Int = 0,
     val streamCount: Int = 0,
     val programCount: Int = 0,
+    val epgChannelCount: Int = 0,
+    val epgSampleChannelIds: List<String> = emptyList(),
     val favoriteCount: Int = 0,
     val historyCount: Int = 0,
     val unhealthyStreamCount: Int = 0,
@@ -96,4 +98,6 @@ data class SyncSummary(
     val epgLastSuccessAt: Long? = null,
     val epgLastError: String? = null,
     val discoveredEpgUrl: String? = null,
+    val epgGuideSourceCount: Int = 0,
+    val epgGuideSampleChannelIds: List<String> = emptyList(),
 )

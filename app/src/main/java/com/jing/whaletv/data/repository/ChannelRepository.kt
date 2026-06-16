@@ -19,6 +19,8 @@ import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.data.model.streamHealthAfterFailure
 import com.jing.whaletv.data.network.FetchResult
 import com.jing.whaletv.data.network.PlaylistClient
+import com.jing.whaletv.data.parser.EpgGuideSource
+import com.jing.whaletv.data.parser.EpgGuideSourceParser
 import com.jing.whaletv.data.parser.M3uParser
 import com.jing.whaletv.data.parser.XmltvParser
 import java.net.URI
@@ -44,6 +46,7 @@ class ChannelRepository(
     private val playlistClient: PlaylistClient,
     private val m3uParser: M3uParser = M3uParser(),
     private val xmltvParser: XmltvParser = XmltvParser(),
+    private val epgGuideSourceParser: EpgGuideSourceParser = EpgGuideSourceParser(),
 ) {
     private val channelDao = database.channelDao()
     private val programDao = database.programDao()
@@ -84,12 +87,14 @@ class ChannelRepository(
                 epgLastSuccessAt = values[KEY_EPG_SUCCESS]?.toLongOrNull(),
                 epgLastError = values[KEY_EPG_ERROR],
                 discoveredEpgUrl = values[KEY_DISCOVERED_EPG_URL],
+                epgGuideSourceCount = values[KEY_EPG_GUIDE_SOURCE_COUNT]?.toIntOrNull() ?: 0,
+                epgGuideSampleChannelIds = parseStoredList(values[KEY_EPG_GUIDE_SAMPLE_CHANNELS]),
             )
         }
     }
 
     fun observeSettingsDiagnostics(): Flow<SettingsDiagnostics> {
-        return combine(
+        val counts = combine(
             channelDao.observeChannelCount(),
             channelDao.observePlayableChannelCount(
                 healthyStatus = StreamHealth.HEALTHY.name,
@@ -97,6 +102,7 @@ class ChannelRepository(
             ),
             channelDao.observeStreamCount(),
             programDao.observeProgramCount(),
+            programDao.observeProgramChannelCount(),
             channelDao.observeFavoriteCount(),
             channelDao.observeHistoryCount(),
             channelDao.observeUnhealthyStreamCount(StreamHealth.UNHEALTHY.name),
@@ -106,10 +112,18 @@ class ChannelRepository(
                 playableChannelCount = values[1],
                 streamCount = values[2],
                 programCount = values[3],
-                favoriteCount = values[4],
-                historyCount = values[5],
-                unhealthyStreamCount = values[6],
+                epgChannelCount = values[4],
+                favoriteCount = values[5],
+                historyCount = values[6],
+                unhealthyStreamCount = values[7],
             )
+        }
+
+        return combine(
+            counts,
+            programDao.observeProgramChannelSamples(EPG_SETTINGS_SAMPLE_CHANNEL_LIMIT),
+        ) { diagnostics, sampleChannels ->
+            diagnostics.copy(epgSampleChannelIds = sampleChannels)
         }.flowOn(Dispatchers.Default)
     }
 
@@ -157,13 +171,17 @@ class ChannelRepository(
     }
 
     suspend fun testActiveEpgSource(): SettingsTestResult {
-        val xmltvUrl = withContext(Dispatchers.Default) {
-            syncStateDao.getValue(KEY_DISCOVERED_EPG_URL).orEmpty()
+        val channelIds = withContext(Dispatchers.Default) {
+            channelDao.getAllChannels().map { it.id }.toSet()
         }
-        if (xmltvUrl.isBlank()) {
-            return SettingsTestResult(false, "尚未发现节目单地址，请先立即刷新")
+        if (channelIds.isEmpty()) {
+            return SettingsTestResult(false, "尚未同步频道，请先立即刷新")
         }
-        return testEpgUrl(xmltvUrl)
+        val sources = resolveEpgSources(channelIds)
+        if (sources.urls.isEmpty()) {
+            return SettingsTestResult(false, "尚未发现可用节目单地址，请先立即刷新")
+        }
+        return testEpgUrls(sources.urls, channelIds)
     }
 
     private suspend fun testPlaylistUrl(url: String): SettingsTestResult = withContext(Dispatchers.Default) {
@@ -190,22 +208,21 @@ class ChannelRepository(
         }
     }
 
-    private suspend fun testEpgUrl(url: String): SettingsTestResult = withContext(Dispatchers.Default) {
-        val normalizedUrl = url.trim()
-        if (!isHttpUrl(normalizedUrl)) {
-            return@withContext SettingsTestResult(false, "请输入 http/https XMLTV 地址")
-        }
-
+    private suspend fun testEpgUrls(urls: List<String>, allowedChannelIds: Set<String>): SettingsTestResult = withContext(Dispatchers.Default) {
         runCatching {
-            val result = playlistClient.fetchText(url = normalizedUrl)
-            val body = (result as FetchResult.Success).body
-            val knownChannelIds = channelDao.getAllChannels().map { it.id }.toSet()
-            val allowedChannelIds = knownChannelIds.ifEmpty { sampleXmltvChannelIds(body) }
-            val programs = xmltvParser.parse(StringReader(body), allowedChannelIds)
+            val programs = urls
+                .take(EPG_TEST_SOURCE_LIMIT)
+                .flatMap { url ->
+                    val result = playlistClient.fetchText(url = url)
+                    xmltvParser.parse(StringReader((result as FetchResult.Success).body), allowedChannelIds)
+                }
+                .distinctBy { Triple(it.channelId, it.startAt, it.title) }
             when {
-                allowedChannelIds.isEmpty() -> SettingsTestResult(false, "节目单可访问，但没有找到节目频道")
                 programs.isEmpty() -> SettingsTestResult(false, "节目单可解析，但没有匹配当前频道")
-                else -> SettingsTestResult(true, "节目单可用：解析到 ${programs.size} 条节目")
+                else -> SettingsTestResult(
+                    true,
+                    "节目单可用：${programs.map { it.channelId }.distinct().size} 个频道，${programs.size} 条节目",
+                )
             }
         }.getOrElse { error ->
             SettingsTestResult(false, "测试节目单失败：${error.userFacingMessage()}")
@@ -276,11 +293,6 @@ class ChannelRepository(
 
     suspend fun syncEpg() = withContext(Dispatchers.Default) {
         setState(KEY_EPG_ATTEMPT, System.currentTimeMillis().toString())
-        val xmltvUrl = syncStateDao.getValue(KEY_DISCOVERED_EPG_URL).orEmpty()
-        if (xmltvUrl.isBlank()) {
-            setState(KEY_EPG_ERROR, null)
-            return@withContext
-        }
 
         try {
             val channelIds = channelDao.getAllChannels().map { it.id }.toSet()
@@ -289,31 +301,47 @@ class ChannelRepository(
                 return@withContext
             }
 
-            val result = playlistClient.fetchText(
-                url = xmltvUrl,
-                etag = syncStateDao.getValue("$KEY_EPG.etag"),
-                lastModified = syncStateDao.getValue("$KEY_EPG.last_modified"),
-            )
-
-            if (result is FetchResult.NotModified) {
-                setState(KEY_EPG_SUCCESS, System.currentTimeMillis().toString())
+            val sourceResolution = resolveEpgSources(channelIds)
+            if (sourceResolution.urls.isEmpty()) {
                 setState(KEY_EPG_ERROR, null)
                 return@withContext
             }
 
-            val success = result as FetchResult.Success
-            setState("$KEY_EPG.etag", success.etag)
-            setState("$KEY_EPG.last_modified", success.lastModified)
-
             val now = System.currentTimeMillis()
-            val programs = xmltvParser
-                .parse(StringReader(success.body), channelIds)
+            val hasCachedPrograms = programDao.countPrograms() > 0
+            val fetchedPrograms = mutableListOf<Program>()
+            var successfulSourceCount = 0
+            var lastError: Throwable? = null
+
+            sourceResolution.urls.forEach { url ->
+                runCatching {
+                    when (val result = fetchEpgSource(url, useCacheHeaders = hasCachedPrograms)) {
+                        FetchResult.NotModified -> successfulSourceCount += 1
+                        is FetchResult.Success -> {
+                            successfulSourceCount += 1
+                            saveEpgSourceCacheHeaders(url, result)
+                            fetchedPrograms += xmltvParser.parse(StringReader(result.body), channelIds)
+                        }
+                    }
+                }.onFailure { error ->
+                    lastError = error
+                }
+            }
+
+            if (successfulSourceCount == 0) {
+                throw lastError ?: IllegalStateException("No EPG source succeeded")
+            }
+
+            val programs = fetchedPrograms
                 .filter { it.endAt > now - ONE_HOUR_MS }
+                .distinctBy { Triple(it.channelId, it.startAt, it.title) }
                 .map { it.toEntity() }
 
             database.withTransaction {
                 programDao.deleteProgramsEndedBefore(now - ONE_HOUR_MS)
-                programDao.upsertPrograms(programs)
+                if (programs.isNotEmpty()) {
+                    programDao.upsertPrograms(programs)
+                }
             }
             setState(KEY_EPG_SUCCESS, now.toString())
             setState(KEY_EPG_ERROR, null)
@@ -417,11 +445,109 @@ class ChannelRepository(
         }.getOrDefault(null) in setOf("http", "https")
     }
 
-    private fun sampleXmltvChannelIds(content: String): Set<String> {
-        return xmltvChannelRegex.findAll(content)
-            .map { it.groupValues[1].substringBefore("@").ifBlank { it.groupValues[1] } }
-            .take(XMLTV_TEST_CHANNEL_SAMPLE_LIMIT)
-            .toSet()
+    private suspend fun resolveEpgSources(channelIds: Set<String>): EpgSourceResolution {
+        val playlistEpgUrl = syncStateDao.getValue(KEY_DISCOVERED_EPG_URL)
+            ?.trim()
+            ?.takeIf(::isHttpUrl)
+        val guideSources = discoverOfficialGuideSources(channelIds)
+        val selectedGuideSources = selectGuideSources(guideSources)
+        val guideSampleChannels = guideSources
+            .map { it.channelId }
+            .distinct()
+            .take(EPG_SETTINGS_SAMPLE_CHANNEL_LIMIT)
+
+        setState(KEY_EPG_GUIDE_SOURCE_COUNT, guideSources.size.toString())
+        setState(KEY_EPG_GUIDE_SAMPLE_CHANNELS, guideSampleChannels.joinToString(",").ifBlank { null })
+
+        val urls = buildList {
+            playlistEpgUrl?.let(::add)
+            addAll(selectedGuideSources.map { it.url })
+        }
+            .distinct()
+            .take(EPG_TOTAL_SOURCE_FETCH_LIMIT)
+
+        return EpgSourceResolution(urls = urls)
+    }
+
+    private suspend fun discoverOfficialGuideSources(channelIds: Set<String>): List<EpgGuideSource> {
+        if (channelIds.isEmpty()) return emptyList()
+        val cached = readCachedGuideSources(channelIds)
+
+        return runCatching {
+            when (
+                val result = playlistClient.fetchText(
+                    url = AppConstants.IPTV_ORG_GUIDES_API_URL,
+                    etag = syncStateDao.getValue("$KEY_EPG_GUIDES.etag"),
+                    lastModified = syncStateDao.getValue("$KEY_EPG_GUIDES.last_modified"),
+                )
+            ) {
+                FetchResult.NotModified -> cached
+                is FetchResult.Success -> {
+                    saveHttpCacheHeaders(KEY_EPG_GUIDES, result)
+                    val parsed = epgGuideSourceParser.parse(result.body, channelIds)
+                    saveCachedGuideSources(parsed)
+                    parsed
+                }
+            }
+        }.getOrElse {
+            cached
+        }
+    }
+
+    private fun selectGuideSources(sources: List<EpgGuideSource>): List<EpgGuideSource> {
+        return sources
+            .sortedWith(compareBy<EpgGuideSource> { it.channelId }.thenBy { epgSourceUrlPriority(it.url) }.thenBy { it.url })
+            .distinctBy { it.url }
+            .take(EPG_GUIDE_SOURCE_FETCH_LIMIT)
+    }
+
+    private suspend fun readCachedGuideSources(channelIds: Set<String>): List<EpgGuideSource> {
+        return syncStateDao.getValue(KEY_EPG_GUIDE_SOURCE_CACHE)
+            ?.lineSequence()
+            ?.mapNotNull { line ->
+                val channelId = line.substringBefore('\t').trim()
+                val url = line.substringAfter('\t', "").trim()
+                if (channelId in channelIds && isHttpUrl(url)) {
+                    EpgGuideSource(channelId = channelId, url = url, site = null, language = null)
+                } else {
+                    null
+                }
+            }
+            ?.toList()
+            .orEmpty()
+    }
+
+    private suspend fun saveCachedGuideSources(sources: List<EpgGuideSource>) {
+        val value = selectGuideSources(sources)
+            .take(EPG_GUIDE_SOURCE_CACHE_LIMIT)
+            .joinToString("\n") { "${it.channelId}\t${it.url}" }
+            .ifBlank { null }
+        setState(KEY_EPG_GUIDE_SOURCE_CACHE, value)
+    }
+
+    private suspend fun fetchEpgSource(url: String, useCacheHeaders: Boolean): FetchResult {
+        val cacheKey = epgSourceCacheKey(url)
+        return playlistClient.fetchText(
+            url = url,
+            etag = syncStateDao.getValue("$cacheKey.etag").takeIf { useCacheHeaders },
+            lastModified = syncStateDao.getValue("$cacheKey.last_modified").takeIf { useCacheHeaders },
+        )
+    }
+
+    private suspend fun saveEpgSourceCacheHeaders(url: String, result: FetchResult.Success) {
+        saveHttpCacheHeaders(epgSourceCacheKey(url), result)
+    }
+
+    private fun epgSourceCacheKey(url: String): String {
+        return "$KEY_EPG.${url.hashCode().toUInt().toString(16)}"
+    }
+
+    private fun epgSourceUrlPriority(url: String): Int {
+        return when {
+            url.endsWith(".xml.gz", ignoreCase = true) -> 0
+            url.endsWith(".xml", ignoreCase = true) -> 1
+            else -> 2
+        }
     }
 
     private suspend fun markStreamSucceeded(stream: TvStream) {
@@ -529,23 +655,42 @@ class ChannelRepository(
         fun cacheKey(): String = "$key.${url.hashCode().toUInt().toString(16)}"
     }
 
+    private data class EpgSourceResolution(
+        val urls: List<String>,
+    )
+
     private companion object {
         const val KEY_PLAYLIST_SUCCESS = "playlist.last_success_at"
         const val KEY_PLAYLIST_ATTEMPT = "playlist.last_attempt_at"
         const val KEY_PLAYLIST_ERROR = "playlist.last_error"
         const val KEY_EPG = "epg"
+        const val KEY_EPG_GUIDES = "epg.guides"
         const val KEY_EPG_ATTEMPT = "epg.last_attempt_at"
         const val KEY_EPG_SUCCESS = "epg.last_success_at"
         const val KEY_EPG_ERROR = "epg.last_error"
         const val KEY_DISCOVERED_EPG_URL = "epg.discovered_url"
+        const val KEY_EPG_GUIDE_SOURCE_COUNT = "epg.guide_source_count"
+        const val KEY_EPG_GUIDE_SAMPLE_CHANNELS = "epg.guide_sample_channels"
+        const val KEY_EPG_GUIDE_SOURCE_CACHE = "epg.guide_source_cache"
         const val ONE_HOUR_MS = 60 * 60 * 1000L
         const val STARTUP_STREAM_PRECHECK_TIMEOUT_MS = 1_000L
         const val STARTUP_STREAM_PRECHECK_CONCURRENCY = 4
         const val STARTUP_STREAM_PRECHECK_LIMIT = 80
         const val SQLITE_BIND_PARAMETER_BATCH_SIZE = 900
-        const val XMLTV_TEST_CHANNEL_SAMPLE_LIMIT = 80
-        val xmltvChannelRegex = Regex("""<programme\b[^>]*\bchannel=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+        const val EPG_GUIDE_SOURCE_FETCH_LIMIT = 6
+        const val EPG_GUIDE_SOURCE_CACHE_LIMIT = 80
+        const val EPG_TOTAL_SOURCE_FETCH_LIMIT = 8
+        const val EPG_TEST_SOURCE_LIMIT = 4
+        const val EPG_SETTINGS_SAMPLE_CHANNEL_LIMIT = 6
     }
+}
+
+private fun parseStoredList(value: String?): List<String> {
+    return value
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.filter { it.isNotBlank() }
+        .orEmpty()
 }
 
 private fun Throwable.userFacingMessage(): String {

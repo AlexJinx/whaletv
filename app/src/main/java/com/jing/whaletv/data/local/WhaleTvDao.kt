@@ -140,6 +140,15 @@ interface ProgramDao {
     @Query("SELECT COUNT(*) FROM programs")
     fun observeProgramCount(): Flow<Int>
 
+    @Query("SELECT COUNT(DISTINCT channelId) FROM programs")
+    fun observeProgramChannelCount(): Flow<Int>
+
+    @Query("SELECT channelId FROM programs GROUP BY channelId ORDER BY channelId ASC LIMIT :limit")
+    fun observeProgramChannelSamples(limit: Int): Flow<List<String>>
+
+    @Query("SELECT COUNT(*) FROM programs")
+    suspend fun countPrograms(): Int
+
     @Upsert
     suspend fun upsertPrograms(programs: List<ProgramEntity>)
 

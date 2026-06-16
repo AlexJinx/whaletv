@@ -77,6 +77,7 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.json)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.xmlpull)
     testImplementation(libs.kxml2)

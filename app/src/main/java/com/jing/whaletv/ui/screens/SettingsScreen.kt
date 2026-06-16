@@ -387,6 +387,8 @@ private fun SettingsContentPane(
             SettingsMenu.Epg -> EpgSettingsContent(
                 effectiveEpgUrl = effectiveEpgUrl,
                 discoveredEpgUrl = syncSummary.discoveredEpgUrl,
+                syncSummary = syncSummary,
+                diagnostics = diagnostics,
                 onTestActiveEpgSource = onTestActiveEpgSource,
             )
             SettingsMenu.Refresh -> RefreshSettingsContent(
@@ -483,6 +485,8 @@ private fun SourceSettingsContent(
 private fun EpgSettingsContent(
     effectiveEpgUrl: String?,
     discoveredEpgUrl: String?,
+    syncSummary: SyncSummary,
+    diagnostics: SettingsDiagnostics,
     onTestActiveEpgSource: () -> Unit,
 ) {
     SettingsCardGrid { cardWidth ->
@@ -495,29 +499,31 @@ private fun EpgSettingsContent(
                         else -> "尚未发现节目单地址"
                     },
                     url = effectiveEpgUrl ?: "playlist 暂未发现 x-tvg-url",
-                    enabled = !effectiveEpgUrl.isNullOrBlank(),
+                    enabled = !effectiveEpgUrl.isNullOrBlank() || syncSummary.epgGuideSourceCount > 0,
                     actionText = "测试节目单",
                     onAction = onTestActiveEpgSource,
                     modifier = Modifier.width(cardWidth),
                 )
                 SettingsValueCard(
-                    title = "发现到的地址",
-                    description = "playlist x-tvg-url",
-                    value = discoveredEpgUrl ?: "等待下一次同步发现",
+                    title = "真实覆盖",
+                    description = "来自本地已解析节目表",
+                    value = epgCoverageText(diagnostics),
                     modifier = Modifier.width(cardWidth),
                 )
-                SettingsTextCard(
-                    title = "节目展示",
-                    description = "播放器和首页的当前节目、下一节目都来自这个开源节目单。",
+                SettingsValueCard(
+                    title = "可测试频道",
+                    description = "当前真的有节目单",
+                    value = epgSampleChannelsText(diagnostics.epgSampleChannelIds),
                     modifier = Modifier.width(cardWidth),
                 )
-                SettingsTextCard(
-                    title = "同步方式",
-                    description = "立即刷新或自动刷新会同步频道后再尝试更新节目单。",
+                SettingsValueCard(
+                    title = "官方候选",
+                    description = "guides.json 直接 XML/GZIP 来源",
+                    value = epgGuideCandidateText(syncSummary),
                     modifier = Modifier.width(cardWidth),
                 )
             }
-            SettingsHintText("没有发现 x-tvg-url 时，节目单页不会显示手动输入框；请先刷新默认 playlist。")
+            SettingsHintText("CCTV-13 这类频道如果没有 EPG 标签，表示当前公开节目单没有匹配到可解析数据。")
         }
     }
 }
@@ -575,7 +581,7 @@ private fun SyncStatusContent(
                 )
                 SettingsStatusCard(
                     label = "EPG",
-                    description = "${diagnostics.programCount} 条节目单 · ${if (syncSummary.discoveredEpgUrl.isNullOrBlank()) "未发现自动地址" else "已发现自动地址"}",
+                    description = "${epgCoverageText(diagnostics)} · ${epgGuideCandidateText(syncSummary)}",
                     lastAttemptAt = syncSummary.epgLastAttemptAt,
                     lastSuccessAt = syncSummary.epgLastSuccessAt,
                     error = syncSummary.epgLastError,
@@ -1191,6 +1197,18 @@ private fun statusVisual(isRefreshing: Boolean, lastSuccessAt: Long?, error: Str
         lastSuccessAt != null -> StatusVisual("已同步", WhaleTokens.Green)
         else -> StatusVisual("未同步", WhaleTokens.SecondaryText)
     }
+}
+
+internal fun epgCoverageText(diagnostics: SettingsDiagnostics): String {
+    return "${diagnostics.epgChannelCount} 个频道 · ${diagnostics.programCount} 条节目"
+}
+
+internal fun epgSampleChannelsText(channelIds: List<String>): String {
+    return channelIds.take(6).joinToString(" · ").ifBlank { "暂无可测试频道" }
+}
+
+internal fun epgGuideCandidateText(syncSummary: SyncSummary): String {
+    return "${syncSummary.epgGuideSourceCount} 个直接来源"
 }
 
 private fun formatSyncTime(value: Long): String {
