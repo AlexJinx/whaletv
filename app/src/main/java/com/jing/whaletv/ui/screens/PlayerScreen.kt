@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,6 +44,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -66,6 +66,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.ui.PlayerView
 import com.jing.whaletv.data.model.Program
+import com.jing.whaletv.data.model.StreamHealth
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.data.model.nextPlaybackStreamIndex
@@ -244,7 +245,9 @@ fun PlayerScreen(
                 channel = channel,
                 favorite = favorite,
                 now = now,
-                sourceText = sourceLabel(currentStream, streamIndex, streams.size),
+                currentStream = currentStream,
+                sourceIndex = streamIndex,
+                sourceTotal = streams.size,
                 statusText = playbackStatusText(playbackState, currentStream, errorMessage),
                 statusColor = playbackStatusColor(playbackState, currentStream, errorMessage),
                 canRetry = currentStream != null,
@@ -293,7 +296,9 @@ private fun PlayerOverlay(
     channel: TvChannel,
     favorite: Boolean,
     now: Long,
-    sourceText: String,
+    currentStream: TvStream?,
+    sourceIndex: Int,
+    sourceTotal: Int,
     statusText: String,
     statusColor: Color,
     canRetry: Boolean,
@@ -308,7 +313,9 @@ private fun PlayerOverlay(
         PlayerTopOverlay(
             channel = channel,
             favorite = favorite,
-            sourceText = sourceText,
+            currentStream = currentStream,
+            sourceIndex = sourceIndex,
+            sourceTotal = sourceTotal,
             statusText = statusText,
             statusColor = statusColor,
             canRetry = canRetry,
@@ -333,7 +340,9 @@ private fun PlayerOverlay(
 private fun PlayerTopOverlay(
     channel: TvChannel,
     favorite: Boolean,
-    sourceText: String,
+    currentStream: TvStream?,
+    sourceIndex: Int,
+    sourceTotal: Int,
     statusText: String,
     statusColor: Color,
     canRetry: Boolean,
@@ -347,25 +356,24 @@ private fun PlayerTopOverlay(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(84.dp)
+            .height(112.dp)
             .background(
                 Brush.verticalGradient(
                     listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.34f), Color.Transparent),
                 ),
             )
-            .padding(horizontal = 34.dp, vertical = 20.dp),
+            .padding(horizontal = 34.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         PlayerOverlayButton(onClick = onClose) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = WhaleTokens.PrimaryText, modifier = Modifier.size(22.dp))
         }
-        Row(
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(start = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
                 text = channel.name,
@@ -374,21 +382,37 @@ private fun PlayerTopOverlay(
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
             )
-            PlayerInfoChip(text = statusText, color = statusColor)
-            PlayerInfoChip(text = sourceText, color = WhaleTokens.TertiaryText)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlayerInfoChip(text = statusText, color = statusColor)
+                channel.groupTitle.takeIf { it.isNotBlank() }?.let { groupTitle ->
+                    PlayerInfoChip(text = groupTitle, color = WhaleTokens.TertiaryText)
+                }
+            }
         }
+        PlayerSourcePanel(
+            stream = currentStream,
+            sourceIndex = sourceIndex,
+            sourceTotal = sourceTotal,
+        )
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            PlayerOverlayButton(onClick = onRetry, enabled = canRetry) {
-                Icon(Icons.Default.Refresh, contentDescription = "重试当前源", tint = buttonIconColor(canRetry), modifier = Modifier.size(21.dp))
-            }
-            PlayerOverlayButton(onClick = onNextSource, enabled = canSwitchSource) {
-                Icon(Icons.Default.SkipNext, contentDescription = "切换下一个源", tint = buttonIconColor(canSwitchSource), modifier = Modifier.size(22.dp))
-            }
+            PlayerLabeledOverlayButton(
+                text = "重试",
+                icon = Icons.Default.Refresh,
+                contentDescription = "重试当前源",
+                enabled = canRetry,
+                onClick = onRetry,
+            )
+            PlayerLabeledOverlayButton(
+                text = "下一个源",
+                icon = Icons.Default.SkipNext,
+                contentDescription = "切换下一个源",
+                enabled = canSwitchSource,
+                onClick = onNextSource,
+            )
             PlayerOverlayButton(onClick = onToggleFavorite, active = favorite) {
                 Icon(
                     imageVector = if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -398,6 +422,88 @@ private fun PlayerTopOverlay(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PlayerSourcePanel(
+    stream: TvStream?,
+    sourceIndex: Int,
+    sourceTotal: Int,
+) {
+    val healthColor = streamHealthColor(stream?.healthStatus)
+    val sourceNumber = if (sourceTotal > 0) {
+        "源 ${sourceIndex.coerceIn(0, sourceTotal - 1) + 1}/$sourceTotal"
+    } else {
+        "无可用播放源"
+    }
+    val qualityText = stream?.quality?.takeIf { it.isNotBlank() } ?: "未知清晰度"
+
+    Row(
+        modifier = Modifier
+            .width(252.dp)
+            .height(62.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF151921).copy(alpha = 0.78f))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "当前播放源",
+                color = WhaleTokens.TertiaryText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+            Text(
+                text = sourceNumber,
+                color = WhaleTokens.PrimaryText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                text = qualityText,
+                color = WhaleTokens.SecondaryText,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            PlayerHealthChip(text = streamHealthText(stream?.healthStatus), color = healthColor)
+        }
+    }
+}
+
+@Composable
+private fun PlayerHealthChip(text: String, color: Color) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(color.copy(alpha = 0.12f))
+            .border(1.dp, color.copy(alpha = 0.24f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(5.dp)
+                .clip(RoundedCornerShape(50))
+                .background(color),
+        )
+        Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -446,44 +552,46 @@ private fun PlayerProgramOverlay(
                 ),
             )
             .padding(start = 40.dp, end = 40.dp, top = 74.dp, bottom = 34.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         currentProgram?.let { program ->
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("正在播出", color = WhaleTokens.Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PlayerSectionLabel("正在播出")
+                    Text(programTimeRange(program), color = WhaleTokens.TertiaryText, fontSize = 12.sp)
+                }
                 Text(
                     text = program.title,
                     color = WhaleTokens.PrimaryText,
-                    fontSize = 18.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
                 )
-                Text(programTimeRange(program), color = WhaleTokens.TertiaryText, fontSize = 12.sp)
-            }
-            programProgress(program, now)?.let { progress ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color.White.copy(alpha = 0.14f)),
-                ) {
+                programProgress(program, now)?.let { progress ->
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(progress)
+                            .fillMaxWidth()
                             .height(4.dp)
-                            .background(WhaleTokens.Cyan),
-                    )
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.White.copy(alpha = 0.14f)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress)
+                                .height(4.dp)
+                                .background(WhaleTokens.Cyan),
+                        )
+                    }
                 }
             }
         }
         if (upcomingPrograms.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+                PlayerSectionLabel("接下来")
                 upcomingPrograms.forEachIndexed { index, program ->
                     PlayerScheduleRow(
-                        label = if (index == 0) "接下来" else "稍后",
+                        index = index,
                         program = program,
                     )
                 }
@@ -493,18 +601,29 @@ private fun PlayerProgramOverlay(
 }
 
 @Composable
-private fun PlayerScheduleRow(label: String, program: Program) {
+private fun PlayerSectionLabel(text: String) {
+    Text(
+        text = text,
+        color = WhaleTokens.Cyan,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+    )
+}
+
+@Composable
+private fun PlayerScheduleRow(index: Int, program: Program) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = label,
-            color = if (label == "接下来") WhaleTokens.Cyan else WhaleTokens.TertiaryText,
+            text = "${index + 1}",
+            color = if (index == 0) WhaleTokens.Cyan else WhaleTokens.TertiaryText,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.width(48.dp),
+            modifier = Modifier.width(20.dp),
         )
         Text(
             text = programTimeRange(program),
@@ -519,6 +638,52 @@ private fun PlayerScheduleRow(label: String, program: Program) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun PlayerLabeledOverlayButton(
+    text: String,
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    val backgroundColor = when {
+        !enabled -> Color(0xFF151921).copy(alpha = 0.30f)
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.14f)
+        else -> Color(0xFF151921).copy(alpha = 0.72f)
+    }
+    val borderColor = when {
+        !enabled -> Color.White.copy(alpha = 0.045f)
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.72f)
+        else -> Color.White.copy(alpha = 0.10f)
+    }
+
+    Row(
+        modifier = Modifier
+            .height(44.dp)
+            .shadow(if (focused) 9.dp else 0.dp, shape = shape, clip = false)
+            .clip(shape)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable(enabled = enabled)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = buttonIconColor(enabled), modifier = Modifier.size(20.dp))
+        Text(
+            text = text,
+            color = if (enabled) WhaleTokens.PrimaryText else WhaleTokens.SecondaryText.copy(alpha = 0.38f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
         )
     }
 }
@@ -613,6 +778,24 @@ private fun PlayerTextButton(text: String, enabled: Boolean, onClick: () -> Unit
     }
 }
 
+private fun streamHealthText(healthStatus: StreamHealth?): String {
+    return when (healthStatus) {
+        StreamHealth.HEALTHY -> "健康"
+        StreamHealth.DEGRADED -> "待观察"
+        StreamHealth.UNHEALTHY -> "不可用"
+        StreamHealth.UNKNOWN, null -> "未探测"
+    }
+}
+
+private fun streamHealthColor(healthStatus: StreamHealth?): Color {
+    return when (healthStatus) {
+        StreamHealth.HEALTHY -> WhaleTokens.Green
+        StreamHealth.DEGRADED -> WhaleTokens.Gold
+        StreamHealth.UNHEALTHY -> WhaleTokens.Red
+        StreamHealth.UNKNOWN, null -> WhaleTokens.TertiaryText
+    }
+}
+
 private fun playbackStatusText(
     playbackState: Int,
     currentStream: TvStream?,
@@ -638,15 +821,6 @@ private fun playbackStatusColor(
         playbackState == Player.STATE_READY -> WhaleTokens.Green
         playbackState == Player.STATE_BUFFERING -> WhaleTokens.Cyan
         else -> WhaleTokens.TertiaryText
-    }
-}
-
-private fun sourceLabel(stream: TvStream?, index: Int, total: Int): String {
-    if (total == 0) return "无可用播放源"
-    val quality = stream?.quality?.takeIf { it.isNotBlank() }
-    return buildString {
-        append("源 ${index + 1}/$total")
-        if (quality != null) append(" · $quality")
     }
 }
 
