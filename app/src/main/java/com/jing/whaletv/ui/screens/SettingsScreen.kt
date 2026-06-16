@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -17,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -75,6 +75,7 @@ import com.jing.whaletv.ui.theme.WhaleTokens
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 @Composable
 fun SettingsScreen(
@@ -111,15 +112,37 @@ fun SettingsScreen(
     val normalizedSettings = settings.copy(
         refreshIntervalHours = SettingsRepository.normalizeRefreshIntervalHours(settings.refreshIntervalHours),
     )
-    val hasUnsavedChanges = draftSettings != normalizedSettings
+    val sourceHasUnsavedChanges = draftSettings.playlistScope != normalizedSettings.playlistScope
+    val refreshHasUnsavedChanges = draftSettings.autoRefresh != normalizedSettings.autoRefresh ||
+        draftSettings.refreshIntervalHours != normalizedSettings.refreshIntervalHours
+    val hasUnsavedChanges = sourceHasUnsavedChanges || refreshHasUnsavedChanges
     val selectedMenu = SettingsMenu.values().firstOrNull { it.name == selectedMenuId } ?: SettingsMenu.Source
     val menuSpecs = remember { settingsMenuSpecs() }
     val selectedSpec = menuSpecs.first { it.menu == selectedMenu }
+    var savedFeedbackMenu by remember { mutableStateOf<SettingsMenu?>(null) }
+    var saveFeedbackEvent by remember { mutableStateOf(0) }
+    val headerStatus = settingsHeaderStatus(
+        selectedMenu = selectedMenu,
+        sourceHasUnsavedChanges = sourceHasUnsavedChanges,
+        refreshHasUnsavedChanges = refreshHasUnsavedChanges,
+        savedFeedbackMenu = savedFeedbackMenu,
+    )
 
     LaunchedEffect(settings) {
         autoRefresh = settings.autoRefresh
         refreshIntervalText = settings.refreshIntervalHours.toString()
         playlistScopeId = settings.playlistScope.id
+    }
+    LaunchedEffect(selectedMenu) {
+        if (savedFeedbackMenu != selectedMenu) {
+            savedFeedbackMenu = null
+        }
+    }
+    LaunchedEffect(saveFeedbackEvent, savedFeedbackMenu) {
+        if (saveFeedbackEvent > 0 && savedFeedbackMenu != null) {
+            delay(SettingsSaveFeedbackDurationMillis)
+            savedFeedbackMenu = null
+        }
     }
 
     val platformDensity = LocalDensity.current
@@ -132,12 +155,13 @@ fun SettingsScreen(
             SettingsTopBar(
                 isRefreshing = isRefreshing,
                 onBack = onBack,
-                onSave = { onSave(draftSettings) },
+                onSave = {
+                    savedFeedbackMenu = selectedMenu.takeIf { it.supportsSaveFeedback }
+                    saveFeedbackEvent += 1
+                    onSave(draftSettings)
+                },
                 onRefreshNow = onRefreshNow,
                 hasUnsavedChanges = hasUnsavedChanges,
-            )
-            SettingsContextBar(
-                selectedSpec = selectedSpec,
             )
             Row(modifier = Modifier.fillMaxSize()) {
                 SettingsSidebar(
@@ -151,8 +175,7 @@ fun SettingsScreen(
                     diagnostics = diagnostics,
                     effectiveEpgUrl = effectiveEpgUrl,
                     isRefreshing = isRefreshing,
-                    message = message,
-                    hasUnsavedChanges = hasUnsavedChanges,
+                    headerStatus = headerStatus,
                     autoRefresh = autoRefresh,
                     onAutoRefreshChange = { autoRefresh = it },
                     playlistScope = draftSettings.playlistScope,
@@ -188,45 +211,6 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsContextBar(
-    selectedSpec: SettingsMenuSpec,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .background(WhaleTokens.Sidebar)
-            .padding(horizontal = 48.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "本地设置",
-            color = WhaleTokens.PrimaryText,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-        )
-        Text(
-            text = "播放源 · 节目单 · 自动刷新",
-            color = WhaleTokens.SecondaryText,
-            fontSize = 14.sp,
-            modifier = Modifier.padding(start = 16.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            text = "当前 ${selectedSpec.title}",
-            color = WhaleTokens.Cyan,
-            fontSize = 12.sp,
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(WhaleTokens.Cyan.copy(alpha = 0.12f))
-                .padding(horizontal = 7.dp, vertical = 3.dp),
-        )
-    }
-}
-
-@Composable
 private fun SettingsTopBar(
     isRefreshing: Boolean,
     onBack: () -> Unit,
@@ -247,6 +231,7 @@ private fun SettingsTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TopBarIconButton(icon = Icons.AutoMirrored.Filled.ArrowBack, label = "返回", onClick = onBack)
+            Spacer(Modifier.width(16.dp))
             Icon(Icons.Default.Settings, contentDescription = null, tint = WhaleTokens.Cyan, modifier = Modifier.size(28.dp))
             Text(
                 text = "设置",
@@ -353,8 +338,7 @@ private fun SettingsContentPane(
     diagnostics: SettingsDiagnostics,
     effectiveEpgUrl: String?,
     isRefreshing: Boolean,
-    message: String?,
-    hasUnsavedChanges: Boolean,
+    headerStatus: StatusVisual?,
     autoRefresh: Boolean,
     onAutoRefreshChange: (Boolean) -> Unit,
     playlistScope: PlaylistScope,
@@ -380,11 +364,7 @@ private fun SettingsContentPane(
     ) {
         ContentHeader(
             spec = selectedSpec,
-            status = settingsHeaderStatus(
-                isRefreshing = isRefreshing,
-                hasUnsavedChanges = hasUnsavedChanges,
-                message = message,
-            ),
+            status = headerStatus,
         )
         when (selectedSpec.menu) {
             SettingsMenu.Source -> SourceSettingsContent(
@@ -428,7 +408,7 @@ private fun SettingsContentPane(
 }
 
 @Composable
-private fun ContentHeader(spec: SettingsMenuSpec, status: StatusVisual) {
+private fun ContentHeader(spec: SettingsMenuSpec, status: StatusVisual?) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -443,7 +423,9 @@ private fun ContentHeader(spec: SettingsMenuSpec, status: StatusVisual) {
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.weight(1f))
-        StatusPill(text = status.text, color = status.color)
+        status?.let {
+            StatusPill(text = it.text, color = it.color)
+        }
     }
 }
 
@@ -455,40 +437,50 @@ private fun SourceSettingsContent(
     onTestDefaultPlaylistSource: () -> Unit,
     onTestActiveEpgSource: () -> Unit,
 ) {
-    SettingsCardGrid { cardWidth ->
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SettingsGridGap)) {
-                PlaylistScopeCard(
-                    selectedScope = playlistScope,
-                    onScopeChange = onPlaylistScopeChange,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SourceStatusCard(
-                    title = "当前 playlist",
-                    note = playlistScope.description,
-                    url = playlistScope.playlistUrl,
-                    enabled = true,
-                    actionText = "测试源",
-                    onAction = onTestDefaultPlaylistSource,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SourceStatusCard(
-                    title = "当前 EPG",
-                    note = "来自 playlist 自动发现",
-                    url = effectiveEpgUrl ?: "尚未发现 x-tvg-url",
-                    enabled = !effectiveEpgUrl.isNullOrBlank(),
-                    actionText = "测试节目单",
-                    onAction = onTestActiveEpgSource,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsTextCard(
-                    title = "数据策略",
-                    description = "频道范围只使用 iptv-org 官方预设，不提供手动输入源。",
-                    modifier = Modifier.width(cardWidth),
-                )
-            }
-            SettingsHintText("切换频道范围后点击保存，应用会重新同步频道和节目单。")
+    SettingsCardStack {
+        SettingsCardRow(height = SettingsBalancedRowHeight) {
+            PlaylistScopeCard(
+                selectedScope = playlistScope,
+                onScopeChange = onPlaylistScopeChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsTextCard(
+                title = "数据策略",
+                description = "优先范围只使用 iptv-org 官方预设，不提供手动输入源。保存后先更新所选范围，随后自动在后台补全全部频道。",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
         }
+        SettingsCardRow(height = SettingsUrlRowHeight) {
+            SourceStatusCard(
+                title = "优先 playlist",
+                note = playlistScope.description,
+                url = playlistScope.playlistUrl,
+                enabled = true,
+                actionText = "测试源",
+                onAction = onTestDefaultPlaylistSource,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+        SettingsCardRow(height = SettingsUrlRowHeight) {
+            SourceStatusCard(
+                title = "当前 EPG",
+                note = "来自 playlist 自动发现",
+                url = effectiveEpgUrl ?: "尚未发现 x-tvg-url",
+                enabled = !effectiveEpgUrl.isNullOrBlank(),
+                actionText = "测试节目单",
+                onAction = onTestActiveEpgSource,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+        SettingsHintText("保存后先更新所选范围，随后自动在后台补全全部频道。")
     }
 }
 
@@ -501,7 +493,7 @@ private fun PlaylistScopeCard(
     val scopes = PlaylistScope.entries
     val currentIndex = scopes.indexOf(selectedScope).coerceAtLeast(0)
     SettingsCard(modifier = modifier) {
-        SettingsCardTitle(title = "频道范围", description = selectedScope.description)
+        SettingsCardTitle(title = "优先更新范围", description = selectedScope.description)
         Text(
             text = selectedScope.label,
             color = WhaleTokens.Cyan,
@@ -510,16 +502,24 @@ private fun PlaylistScopeCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             SettingsSmallButton(
                 text = "上一个",
                 enabled = currentIndex > 0,
                 onClick = { onScopeChange(scopes[currentIndex - 1]) },
+                height = PlaylistScopeButtonHeight,
             )
             SettingsSmallButton(
                 text = "下一个",
                 enabled = currentIndex < scopes.lastIndex,
                 onClick = { onScopeChange(scopes[currentIndex + 1]) },
+                height = PlaylistScopeButtonHeight,
             )
         }
     }
@@ -533,42 +533,52 @@ private fun EpgSettingsContent(
     diagnostics: SettingsDiagnostics,
     onTestActiveEpgSource: () -> Unit,
 ) {
-    SettingsCardGrid { cardWidth ->
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SettingsGridGap)) {
-                SourceStatusCard(
-                    title = "当前生效 EPG",
-                    note = when {
-                        !discoveredEpgUrl.isNullOrBlank() -> "来自 playlist 自动发现"
-                        else -> "尚未发现节目单地址"
-                    },
-                    url = effectiveEpgUrl ?: "playlist 暂未发现 x-tvg-url",
-                    enabled = !effectiveEpgUrl.isNullOrBlank() || syncSummary.epgGuideSourceCount > 0,
-                    actionText = "测试节目单",
-                    onAction = onTestActiveEpgSource,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsValueCard(
-                    title = "真实覆盖",
-                    description = "来自本地已解析节目表",
-                    value = epgCoverageText(diagnostics),
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsValueCard(
-                    title = "可测试频道",
-                    description = "当前真的有节目单",
-                    value = epgSampleChannelsText(diagnostics.epgSampleChannelIds),
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsValueCard(
-                    title = "官方候选",
-                    description = "guides.json 直接 XML/GZIP 来源",
-                    value = epgGuideCandidateText(syncSummary),
-                    modifier = Modifier.width(cardWidth),
-                )
-            }
-            SettingsHintText("CCTV-13 这类频道如果没有 EPG 标签，表示当前公开节目单没有匹配到可解析数据。")
+    SettingsCardStack {
+        SettingsCardRow(height = SettingsUrlRowHeight) {
+            SourceStatusCard(
+                title = "当前生效 EPG",
+                note = when {
+                    !discoveredEpgUrl.isNullOrBlank() -> "来自 playlist 自动发现"
+                    else -> "尚未发现节目单地址"
+                },
+                url = effectiveEpgUrl ?: "playlist 暂未发现 x-tvg-url",
+                enabled = !effectiveEpgUrl.isNullOrBlank() || syncSummary.epgGuideSourceCount > 0,
+                actionText = "测试节目单",
+                onAction = onTestActiveEpgSource,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
         }
+        SettingsCardRow(height = SettingsCompactRowHeight) {
+            SettingsValueCard(
+                title = "真实覆盖",
+                description = "来自本地已解析节目表",
+                value = epgCoverageText(diagnostics),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsValueCard(
+                title = "官方候选",
+                description = "guides.json 直接 XML/GZIP 来源",
+                value = epgGuideCandidateText(syncSummary),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+        SettingsCardRow(height = SettingsUrlRowHeight) {
+            SettingsValueCard(
+                title = "可测试频道",
+                description = "当前真的有节目单",
+                value = epgSampleChannelsText(diagnostics.epgSampleChannelIds),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+        SettingsHintText("CCTV-13 这类频道如果没有 EPG 标签，表示当前公开节目单没有匹配到可解析数据。")
     }
 }
 
@@ -581,27 +591,29 @@ private fun RefreshSettingsContent(
     onRefreshIntervalTextChange: (String) -> Unit,
     onRefreshIntervalStep: (Int) -> Unit,
 ) {
-    SettingsCardGrid { cardWidth ->
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SettingsGridGap)) {
-                SettingsSwitchCard(
-                    title = "自动刷新",
-                    description = "按间隔同步 playlist 与 EPG",
-                    checked = autoRefresh,
-                    onCheckedChange = onAutoRefreshChange,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsIntervalCard(
-                    value = refreshInterval,
-                    text = refreshIntervalText,
-                    enabled = autoRefresh,
-                    onTextChange = onRefreshIntervalTextChange,
-                    onStep = onRefreshIntervalStep,
-                    modifier = Modifier.width(cardWidth),
-                )
-            }
-            SettingsHintText("自动刷新关闭后，顶部的立即刷新仍然可以手动同步频道和节目单。")
+    SettingsCardStack {
+        SettingsCardRow(height = SettingsBalancedRowHeight) {
+            SettingsSwitchCard(
+                title = "自动刷新",
+                description = "按间隔同步 playlist 与 EPG",
+                checked = autoRefresh,
+                onCheckedChange = onAutoRefreshChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsIntervalCard(
+                value = refreshInterval,
+                text = refreshIntervalText,
+                enabled = autoRefresh,
+                onTextChange = onRefreshIntervalTextChange,
+                onStep = onRefreshIntervalStep,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
         }
+        SettingsHintText("自动刷新关闭后，顶部的立即刷新仍然可以手动同步频道和节目单。")
     }
 }
 
@@ -611,36 +623,53 @@ private fun SyncStatusContent(
     diagnostics: SettingsDiagnostics,
     isRefreshing: Boolean,
 ) {
-    SettingsCardGrid { cardWidth ->
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SettingsGridGap)) {
-                SettingsStatusCard(
-                    label = "Playlist",
-                    description = "${diagnostics.playableChannelCount}/${diagnostics.channelCount} 个频道可播放 · ${diagnostics.streamCount} 个源",
-                    lastAttemptAt = syncSummary.playlistLastAttemptAt,
-                    lastSuccessAt = syncSummary.playlistLastSuccessAt,
-                    error = syncSummary.playlistLastError,
-                    isRefreshing = isRefreshing,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsStatusCard(
-                    label = "EPG",
-                    description = "${epgCoverageText(diagnostics)} · ${epgGuideCandidateText(syncSummary)}",
-                    lastAttemptAt = syncSummary.epgLastAttemptAt,
-                    lastSuccessAt = syncSummary.epgLastSuccessAt,
-                    error = syncSummary.epgLastError,
-                    isRefreshing = isRefreshing,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsMetricCard(
-                    title = "用户数据",
-                    value = "${diagnostics.favoriteCount} 收藏 · ${diagnostics.historyCount} 历史",
-                    description = "${diagnostics.unhealthyStreamCount} 个播放源标记不可用",
-                    modifier = Modifier.width(cardWidth),
-                )
-            }
-            SettingsHintText("最近尝试时间表示系统上一次启动同步任务；最近成功时间表示数据真正更新或确认未变化。")
+    SettingsCardStack {
+        SettingsCardRow(height = SettingsStatusRowHeight) {
+            SettingsStatusCard(
+                label = "Playlist",
+                description = "${diagnostics.playableChannelCount}/${diagnostics.channelCount} 个频道可播放 · ${diagnostics.streamCount} 个源",
+                lastAttemptAt = syncSummary.playlistLastAttemptAt,
+                lastSuccessAt = syncSummary.playlistLastSuccessAt,
+                error = syncSummary.playlistLastError,
+                isRefreshing = isRefreshing,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsStatusCard(
+                label = "EPG",
+                description = "${epgCoverageText(diagnostics)} · ${epgGuideCandidateText(syncSummary)}",
+                lastAttemptAt = syncSummary.epgLastAttemptAt,
+                lastSuccessAt = syncSummary.epgLastSuccessAt,
+                error = syncSummary.epgLastError,
+                isRefreshing = isRefreshing,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
         }
+        SettingsCardRow(height = SettingsStatusRowHeight) {
+            SettingsStatusCard(
+                label = "全量补全",
+                description = "优先范围之后，后台恢复全部频道",
+                lastAttemptAt = syncSummary.fullPlaylistLastAttemptAt,
+                lastSuccessAt = syncSummary.fullPlaylistLastSuccessAt,
+                error = syncSummary.fullPlaylistLastError,
+                isRefreshing = false,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsMetricCard(
+                title = "用户数据",
+                value = "${diagnostics.favoriteCount} 收藏 · ${diagnostics.historyCount} 历史",
+                description = "${diagnostics.unhealthyStreamCount} 个播放源标记不可用",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+        SettingsHintText("最近尝试时间表示系统上一次启动同步任务；最近成功时间表示数据真正更新或确认未变化。")
     }
 }
 
@@ -653,80 +682,117 @@ private fun MaintenanceSettingsContent(
     onClearEpgCache: () -> Unit,
     onClearWatchHistory: () -> Unit,
 ) {
-    SettingsCardGrid { cardWidth ->
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SettingsGridGap)) {
-                MaintenanceActionCard(
-                    title = "重置播放源健康",
-                    description = "${diagnostics.unhealthyStreamCount} 个源当前标记不可用",
-                    actionId = MAINTENANCE_RESET_STREAMS,
-                    pendingAction = pendingAction,
-                    onPendingAction = onPendingAction,
-                    onConfirmed = onResetStreamHealth,
-                    modifier = Modifier.width(cardWidth),
-                )
-                MaintenanceActionCard(
-                    title = "清空节目单缓存",
-                    description = "当前缓存 ${diagnostics.programCount} 条节目",
-                    actionId = MAINTENANCE_CLEAR_EPG,
-                    pendingAction = pendingAction,
-                    onPendingAction = onPendingAction,
-                    onConfirmed = onClearEpgCache,
-                    modifier = Modifier.width(cardWidth),
-                )
-                MaintenanceActionCard(
-                    title = "清空观看历史",
-                    description = "当前 ${diagnostics.historyCount} 个频道有历史",
-                    actionId = MAINTENANCE_CLEAR_HISTORY,
-                    pendingAction = pendingAction,
-                    onPendingAction = onPendingAction,
-                    onConfirmed = onClearWatchHistory,
-                    modifier = Modifier.width(cardWidth),
-                )
-            }
-            SettingsHintText("维护操作需要点击两次确认，只影响本地缓存和状态，不删除默认 iptv-org 源。")
+    SettingsCardStack {
+        SettingsCardRow(height = SettingsBalancedRowHeight) {
+            MaintenanceActionCard(
+                title = "重置播放源健康",
+                description = "${diagnostics.unhealthyStreamCount} 个源当前标记不可用",
+                actionId = MAINTENANCE_RESET_STREAMS,
+                pendingAction = pendingAction,
+                onPendingAction = onPendingAction,
+                onConfirmed = onResetStreamHealth,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            MaintenanceActionCard(
+                title = "清空节目单缓存",
+                description = "当前缓存 ${diagnostics.programCount} 条节目",
+                actionId = MAINTENANCE_CLEAR_EPG,
+                pendingAction = pendingAction,
+                onPendingAction = onPendingAction,
+                onConfirmed = onClearEpgCache,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
         }
+        SettingsCardRow(height = SettingsBalancedRowHeight) {
+            MaintenanceActionCard(
+                title = "清空观看历史",
+                description = "当前 ${diagnostics.historyCount} 个频道有历史",
+                actionId = MAINTENANCE_CLEAR_HISTORY,
+                pendingAction = pendingAction,
+                onPendingAction = onPendingAction,
+                onConfirmed = onClearWatchHistory,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsTextCard(
+                title = "维护说明",
+                description = "维护操作需要点击两次确认，只影响本地缓存、健康状态或观看记录，不删除默认 iptv-org 来源。",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+        SettingsHintText("维护操作需要点击两次确认，只影响本地缓存和状态，不删除默认 iptv-org 源。")
     }
 }
 
 @Composable
 private fun AboutSourcesContent() {
-    SettingsCardGrid { cardWidth ->
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SettingsGridGap)) {
-                SettingsValueCard(
-                    title = "iptv-org playlist",
-                    description = "公开 IPTV 频道索引",
-                    value = AppConstants.PRIMARY_PLAYLIST_URL,
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsValueCard(
-                    title = "EPG / API",
-                    description = "节目单与频道元数据来源",
-                    value = "https://github.com/iptv-org/epg · https://github.com/iptv-org/api",
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsTextCard(
-                    title = "来源说明",
-                    description = "iptv-org 仓库本身不存储视频文件，只收集公开的直播链接；实际可用性会受频道源、地区和网络影响。",
-                    modifier = Modifier.width(cardWidth),
-                )
-                SettingsTextCard(
-                    title = "频道范围",
-                    description = "可以在数据源页选择官方国家、语言或分类 playlist，同步后首页只显示该范围频道。",
-                    modifier = Modifier.width(cardWidth),
-                )
-            }
+    SettingsCardStack {
+        SettingsCardRow(height = SettingsCompactRowHeight) {
+            SettingsValueCard(
+                title = "iptv-org playlist",
+                description = "公开 IPTV 频道索引",
+                value = AppConstants.PRIMARY_PLAYLIST_URL,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsValueCard(
+                title = "EPG / API",
+                description = "节目单与频道元数据来源",
+                value = "https://github.com/iptv-org/epg · https://github.com/iptv-org/api",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+        }
+        SettingsCardRow(height = SettingsBalancedRowHeight) {
+            SettingsTextCard(
+                title = "来源说明",
+                description = "iptv-org 仓库本身不存储视频文件，只收集公开的直播链接；实际可用性会受频道源、地区和网络影响。",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            SettingsTextCard(
+                title = "优先更新范围",
+                description = "可以在数据源页选择官方国家、语言或分类 playlist，保存后先更新这批频道，再后台补全全部频道。",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
         }
     }
 }
 
 @Composable
-private fun SettingsCardGrid(content: @Composable (cardWidth: Dp) -> Unit) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val cardWidth = (maxWidth - SettingsGridGap * 3f) / 4f
-        content(cardWidth)
-    }
+private fun SettingsCardStack(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun SettingsCardRow(
+    modifier: Modifier = Modifier,
+    height: Dp,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height),
+        horizontalArrangement = Arrangement.spacedBy(SettingsGridGap),
+        content = content,
+    )
 }
 
 @Composable
@@ -742,7 +808,8 @@ private fun SettingsValueCard(
             text = value,
             color = WhaleTokens.PrimaryText,
             fontSize = 13.sp,
-            maxLines = 1,
+            lineHeight = 17.sp,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .fillMaxWidth()
@@ -774,7 +841,8 @@ private fun SourceStatusCard(
                 text = url,
                 color = if (enabled) WhaleTokens.PrimaryText else WhaleTokens.SecondaryText,
                 fontSize = 13.sp,
-                maxLines = 1,
+                lineHeight = 17.sp,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .weight(1f)
@@ -815,14 +883,22 @@ private fun SettingsTextCard(
 ) {
     SettingsCard(modifier = modifier) {
         Text(title, color = WhaleTokens.PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        Text(
-            text = description,
-            color = WhaleTokens.SecondaryText,
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(WhaleTokens.Muted.copy(alpha = 0.72f))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = description,
+                color = WhaleTokens.SecondaryText,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -845,7 +921,6 @@ private fun MaintenanceActionCard(
             title = title,
             description = if (confirming) "再次点击确认执行" else description,
         )
-        Spacer(Modifier.weight(1f))
         SettingsSmallButton(
             text = if (confirming) "确认" else "执行",
             highlighted = confirming,
@@ -875,9 +950,10 @@ private fun SettingsSwitchCard(
             .focusable()
             .clickable { onCheckedChange(!checked) },
         borderColor = if (focused) WhaleTokens.Cyan.copy(alpha = 0.70f) else null,
+        verticalArrangement = Arrangement.Center,
     ) {
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -947,26 +1023,42 @@ private fun SettingsStatusCard(
 ) {
     val visual = statusVisual(isRefreshing = isRefreshing, lastSuccessAt = lastSuccessAt, error = error)
     SettingsCard(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
             Box(
                 modifier = Modifier
                     .size(9.dp)
                     .clip(CircleShape)
                     .background(visual.color),
             )
-            Text(label, color = WhaleTokens.PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                label,
+                color = WhaleTokens.PrimaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             StatusPill(text = visual.text, color = visual.color)
         }
-        Text(description, color = WhaleTokens.SecondaryText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
-            text = "尝试 ${lastAttemptAt?.let(::formatSyncTime) ?: "尚未"} · 成功 ${lastSuccessAt?.let(::formatSyncTime) ?: "尚未"}",
-            color = WhaleTokens.TertiaryText,
+            description,
+            color = WhaleTokens.SecondaryText,
             fontSize = 12.sp,
-            maxLines = 1,
+            lineHeight = 17.sp,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        error?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = WhaleTokens.Red, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            StatusDetailRow(label = "尝试", value = lastAttemptAt?.let(::formatSyncTime) ?: "尚未")
+            StatusDetailRow(label = "成功", value = lastSuccessAt?.let(::formatSyncTime) ?: "尚未")
+            error?.takeIf { it.isNotBlank() }?.let {
+                StatusDetailRow(label = "错误", value = it, valueColor = WhaleTokens.Red, maxLines = 2)
+            }
         }
     }
 }
@@ -976,26 +1068,67 @@ private fun SettingsCard(
     modifier: Modifier = Modifier,
     alpha: Float = 1f,
     borderColor: Color? = null,
+    minHeight: Dp = SettingsCardMinHeight,
+    verticalArrangement: Arrangement.Vertical = Arrangement.SpaceBetween,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(8.dp)
     Column(
         modifier = modifier
-            .height(SettingsCardHeight)
+            .heightIn(min = minHeight)
             .clip(shape)
             .background(WhaleTokens.SurfaceRaised.copy(alpha = alpha))
             .border(1.dp, borderColor ?: Color.White.copy(alpha = 0.06f * alpha), shape)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = verticalArrangement,
         content = content,
     )
 }
 
 @Composable
 private fun SettingsCardTitle(title: String, description: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(title, color = WhaleTokens.PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        Text(description, color = WhaleTokens.SecondaryText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            description,
+            color = WhaleTokens.SecondaryText,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun StatusDetailRow(
+    label: String,
+    value: String,
+    valueColor: Color = WhaleTokens.TertiaryText,
+    maxLines: Int = 1,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            color = WhaleTokens.SecondaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(34.dp),
+            maxLines = 1,
+        )
+        Text(
+            text = value,
+            color = valueColor,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -1088,7 +1221,7 @@ private fun SettingsTopBarAction(
 @Composable
 private fun SettingsStepButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     SettingButtonContainer(onClick = onClick, enabled = enabled, iconOnly = true) {
-        Text(text, color = settingsButtonTextColor(enabled), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(text, color = settingsButtonTextColor(enabled), fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1097,10 +1230,12 @@ private fun SettingsSmallButton(
     text: String,
     enabled: Boolean = true,
     highlighted: Boolean = false,
+    height: Dp = SettingsControlHeight,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    SettingButtonContainer(onClick = onClick, enabled = enabled, highlighted = highlighted) {
-        Text(text, color = settingsButtonTextColor(enabled), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+    SettingButtonContainer(onClick = onClick, enabled = enabled, highlighted = highlighted, height = height, modifier = modifier) {
+        Text(text, color = settingsButtonTextColor(enabled), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -1129,7 +1264,7 @@ private fun CompactSettingsInput(
         cursorBrush = SolidColor(WhaleTokens.Cyan),
         keyboardOptions = keyboardOptions,
         modifier = modifier
-            .height(38.dp)
+            .height(SettingsControlHeight)
             .clip(shape)
             .background(WhaleTokens.Muted.copy(alpha = if (enabled) 1f else 0.56f))
             .border(
@@ -1172,14 +1307,16 @@ private fun SettingButtonContainer(
     enabled: Boolean = true,
     highlighted: Boolean = false,
     iconOnly: Boolean = false,
+    height: Dp = SettingsControlHeight,
+    modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
     Row(
-        modifier = Modifier
-            .height(36.dp)
-            .then(if (iconOnly) Modifier.width(36.dp) else Modifier)
+        modifier = modifier
+            .height(height)
+            .then(if (iconOnly) Modifier.width(height) else Modifier)
             .clip(shape)
             .background(
                 when {
@@ -1201,7 +1338,7 @@ private fun SettingButtonContainer(
             .onFocusChanged { focused = it.isFocused }
             .focusable(enabled)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = if (iconOnly) 0.dp else 14.dp),
+            .padding(horizontal = if (iconOnly) 0.dp else 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
         content = content,
@@ -1221,16 +1358,20 @@ private fun topBarActionColor(enabled: Boolean, highlighted: Boolean): Color {
 }
 
 private fun settingsHeaderStatus(
-    isRefreshing: Boolean,
-    hasUnsavedChanges: Boolean,
-    message: String?,
-): StatusVisual {
+    selectedMenu: SettingsMenu,
+    sourceHasUnsavedChanges: Boolean,
+    refreshHasUnsavedChanges: Boolean,
+    savedFeedbackMenu: SettingsMenu?,
+): StatusVisual? {
+    val currentPageHasUnsavedChanges = when (selectedMenu) {
+        SettingsMenu.Source -> sourceHasUnsavedChanges
+        SettingsMenu.Refresh -> refreshHasUnsavedChanges
+        else -> false
+    }
     return when {
-        isRefreshing -> StatusVisual("正在刷新", WhaleTokens.Cyan)
-        hasUnsavedChanges -> StatusVisual("未保存", WhaleTokens.Gold)
-        message?.contains("失败") == true -> StatusVisual("失败", WhaleTokens.Red)
-        message?.contains("已刷新") == true || message?.contains("已更新") == true -> StatusVisual("已刷新", WhaleTokens.Green)
-        else -> StatusVisual("已保存", WhaleTokens.Green)
+        currentPageHasUnsavedChanges -> StatusVisual("未保存", WhaleTokens.Gold)
+        selectedMenu.supportsSaveFeedback && savedFeedbackMenu == selectedMenu -> StatusVisual("已保存", WhaleTokens.Green)
+        else -> null
     }
 }
 
@@ -1264,7 +1405,7 @@ private fun settingsMenuSpecs(): List<SettingsMenuSpec> = listOf(
         menu = SettingsMenu.Source,
         title = "数据源",
         description = "Playlist",
-        longDescription = "查看默认开源频道和节目单来源",
+        longDescription = "选择优先更新的官方频道来源",
         icon = Icons.Default.Storage,
     ),
     SettingsMenuSpec(
@@ -1285,7 +1426,7 @@ private fun settingsMenuSpecs(): List<SettingsMenuSpec> = listOf(
         menu = SettingsMenu.Status,
         title = "同步状态",
         description = "最近结果",
-        longDescription = "查看频道源和节目单最近一次同步结果",
+        longDescription = "查看优先更新、后台补全和节目单结果",
         icon = Icons.Default.CheckCircle,
     ),
     SettingsMenuSpec(
@@ -1313,6 +1454,9 @@ private enum class SettingsMenu {
     About,
 }
 
+private val SettingsMenu.supportsSaveFeedback: Boolean
+    get() = this == SettingsMenu.Source || this == SettingsMenu.Refresh
+
 private data class SettingsMenuSpec(
     val menu: SettingsMenu,
     val title: String,
@@ -1329,7 +1473,14 @@ private data class StatusVisual(
 private val SyncTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
     .withZone(ZoneId.systemDefault())
 private val SettingsGridGap = 20.dp
-private val SettingsCardHeight = 124.dp
+private val SettingsCardMinHeight = 0.dp
+private val SettingsCompactRowHeight = 132.dp
+private val SettingsBalancedRowHeight = 156.dp
+private val SettingsUrlRowHeight = 124.dp
+private val SettingsStatusRowHeight = 166.dp
+private val SettingsControlHeight = 42.dp
+private val PlaylistScopeButtonHeight = 48.dp
+private const val SettingsSaveFeedbackDurationMillis = 5_000L
 private const val MAINTENANCE_RESET_STREAMS = "reset_streams"
 private const val MAINTENANCE_CLEAR_EPG = "clear_epg"
 private const val MAINTENANCE_CLEAR_HISTORY = "clear_history"
