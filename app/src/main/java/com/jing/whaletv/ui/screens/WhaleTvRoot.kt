@@ -48,13 +48,13 @@ fun WhaleTvRoot(viewModel: MainViewModel) {
         SearchScreen(
             channels = state.channels,
             onBack = viewModel::closeSearch,
-            onChannelSelected = viewModel::openChannel,
+            onChannelSelected = viewModel::playChannel,
         )
     } else {
         HomeScreen(
             state = state,
             onRefresh = viewModel::refreshNow,
-            onChannelSelected = viewModel::openChannel,
+            onChannelSelected = viewModel::playChannel,
             onSearch = viewModel::openSearch,
             onSettings = viewModel::openSettings,
             onUnavailableFeature = viewModel::showUnavailableFeature,

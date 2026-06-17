@@ -47,6 +47,7 @@ fun HomeChannelCard(
     onFocused: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     var focused by remember { mutableStateOf(false) }
     val active = focused || highlighted
@@ -71,7 +72,9 @@ fun HomeChannelCard(
                 if (it.isFocused) {
                     onFocused()
                 }
+                onFocusChanged(it.isFocused)
             }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick),
     ) {
@@ -111,11 +114,14 @@ fun HomeChannelCard(
                 NowPlayingRow(
                     title = current,
                     modifier = Modifier
-                        .padding(top = 10.dp)
+                        .padding(top = 8.dp)
                         .fillMaxWidth(),
                 )
             }
             Spacer(Modifier.weight(1f))
+            if (item.currentProgramTitle != null) {
+                Spacer(Modifier.height(8.dp))
+            }
             ChannelMetaRow(item)
         }
     }
@@ -212,7 +218,7 @@ private fun NowPlayingRow(title: String, modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(7.dp))
             .background(Color(0xFF5FC8B8).copy(alpha = 0.09f))
             .border(1.dp, Color(0xFF5FC8B8).copy(alpha = 0.14f), RoundedCornerShape(7.dp))
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = 9.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
@@ -225,7 +231,7 @@ private fun NowPlayingRow(title: String, modifier: Modifier = Modifier) {
         Text(
             text = "正在播出：$title",
             color = Color(0xFF8FE3D8),
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

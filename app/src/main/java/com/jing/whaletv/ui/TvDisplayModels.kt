@@ -65,9 +65,18 @@ private val countryNameHints = mapOf(
 )
 
 private val isoCountryCodeLookup = Locale.getISOCountries().toSet()
+private val isoCountryDisplayNameLookup = Locale.getISOCountries().associate { code ->
+    val country = Locale.Builder()
+        .setRegion(code)
+        .build()
+        .getDisplayCountry(Locale.SIMPLIFIED_CHINESE)
+    code.lowercase(Locale.ROOT) to country.ifBlank { code.uppercase(Locale.ROOT) }
+}
 private val bracketPattern = Regex("""\(([^)]+)\)""")
 private val squarePattern = Regex("""\[([^\]]+)\]""")
 private val codeLikePattern = Regex("""\b([A-Za-z]{2,3})\b""")
+private val qualityResolutionPattern = Regex("""(\d{3,4})[pi]?""", RegexOption.IGNORE_CASE)
+private val channelNumberPattern = Regex("""\d+""")
 
 fun TvChannel.homeCountryId(): String {
     val idSuffix = id.substringAfterLast('.', "").lowercase(Locale.ROOT).trim('.')
@@ -138,8 +147,7 @@ fun TvChannel.homeQualityLabel(): String? {
     if (qualities.any { it.contains("8K", ignoreCase = true) }) return "8K"
     if (qualities.any { it.contains("4K", ignoreCase = true) }) return "4K"
     val hasHd = qualities.any { quality ->
-        val resolution = Regex("""(\d{3,4})[pi]?""", RegexOption.IGNORE_CASE)
-            .find(quality)
+        val resolution = qualityResolutionPattern.find(quality)
             ?.groupValues
             ?.getOrNull(1)
             ?.toIntOrNull()
@@ -194,7 +202,7 @@ private fun TvChannel.logoText(): String {
 }
 
 private fun TvChannel.displayNumber(): String {
-    return Regex("""\d+""").find(name)?.value
+    return channelNumberPattern.find(name)?.value
         ?: ((id.hashCode().absoluteValue % 90) + 10).toString()
 }
 
@@ -234,6 +242,5 @@ private fun isCountryCodeCandidate(value: String): Boolean {
 }
 
 private fun resolveCountryDisplayName(code: String): String {
-    val country = Locale("", code.uppercase(Locale.ROOT)).getDisplayCountry(Locale.SIMPLIFIED_CHINESE)
-    return if (country.isBlank()) code.uppercase(Locale.ROOT) else country
+    return isoCountryDisplayNameLookup[code.lowercase(Locale.ROOT)] ?: code.uppercase(Locale.ROOT)
 }

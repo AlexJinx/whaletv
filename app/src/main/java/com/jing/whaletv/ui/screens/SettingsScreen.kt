@@ -71,6 +71,7 @@ import com.jing.whaletv.data.model.PlaylistScope
 import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.repository.SettingsRepository
+import com.jing.whaletv.ui.components.tvRemoteClick
 import com.jing.whaletv.ui.theme.WhaleTokens
 import java.time.Instant
 import java.time.ZoneId
@@ -293,7 +294,13 @@ private fun SettingsMenuButton(
             .height(44.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (active) WhaleTokens.SurfaceRaised else Color.Transparent)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused && !selected) {
+                    onClick()
+                }
+            }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick),
     ) {
@@ -946,6 +953,7 @@ private fun SettingsSwitchCard(
     SettingsCard(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(onClick = { onCheckedChange(!checked) })
             .focusable()
             .clickable { onCheckedChange(!checked) },
         borderColor = if (focused) WhaleTokens.Cyan.copy(alpha = 0.70f) else null,
@@ -1167,6 +1175,7 @@ private fun TopBarIconButton(icon: ImageVector, label: String, enabled: Boolean 
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color.White.copy(alpha = 0.05f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(enabled = enabled, onClick = onClick)
             .focusable(enabled)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1196,6 +1205,7 @@ private fun SettingsTopBarAction(
             .clip(RoundedCornerShape(6.dp))
             .background(if (active) Color.White.copy(alpha = 0.05f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(enabled = enabled, onClick = onClick)
             .focusable(enabled)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1335,6 +1345,7 @@ private fun SettingButtonContainer(
                 shape,
             )
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(enabled = enabled, onClick = onClick)
             .focusable(enabled)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = if (iconOnly) 0.dp else 18.dp),

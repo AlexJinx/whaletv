@@ -56,6 +56,7 @@ import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.ui.ChannelCardItem
 import com.jing.whaletv.ui.SearchKeyboardKeys
 import com.jing.whaletv.ui.components.HomeChannelCard
+import com.jing.whaletv.ui.components.tvRemoteClick
 import com.jing.whaletv.ui.searchChannels
 import com.jing.whaletv.ui.theme.WhaleTokens
 import com.jing.whaletv.ui.toChannelCardItem
@@ -265,6 +266,7 @@ private fun SearchKeyboardKey(
                 shape,
             )
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -298,6 +300,7 @@ private fun SearchActionButton(
                 RoundedCornerShape(6.dp),
             )
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(enabled = enabled, onClick = onClick)
             .focusable(enabled)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp),
@@ -406,6 +409,7 @@ private fun SearchIconButton(icon: ImageVector, label: String, onClick: () -> Un
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color.White.copy(alpha = 0.05f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),

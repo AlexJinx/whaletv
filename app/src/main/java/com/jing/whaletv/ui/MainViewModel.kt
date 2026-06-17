@@ -134,9 +134,10 @@ class MainViewModel(
         }
     }
 
-    fun openChannel(channelId: String) {
+    fun playChannel(channelId: String) {
         val channel = uiState.value.channels.firstOrNull { it.id == channelId }
-        if (channel == null || channel.playbackStreams().isEmpty()) {
+        val playbackStreams = channel?.playbackStreams().orEmpty()
+        if (channel == null || playbackStreams.isEmpty()) {
             showMessage("频道暂无可播放源")
             return
         }

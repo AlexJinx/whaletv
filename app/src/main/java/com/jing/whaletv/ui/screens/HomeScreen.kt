@@ -57,11 +57,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,6 +90,7 @@ import com.jing.whaletv.ui.homeDesignRank
 import com.jing.whaletv.ui.homeHistoryChannels
 import com.jing.whaletv.ui.toChannelCardItem
 import com.jing.whaletv.ui.components.HomeChannelCard
+import com.jing.whaletv.ui.components.tvRemoteClick
 import com.jing.whaletv.ui.theme.WhaleTokens
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -121,10 +128,8 @@ fun HomeScreen(
     val countryChannels = remember(allChannels, selectedCountry) {
         allChannels.filter { it.homeCountryId() == selectedCountry }
     }
-    val categoryCounts = remember(countryChannels, selectedCountry) {
-        HomeCategorySpecs.associate { category ->
-            category.id to homeGridItemsForCategory(category.id, selectedCountry, countryChannels).size
-        }
+    val categoryCounts = remember(countryChannels) {
+        homeCategoryCounts(countryChannels)
     }
     val currentCategory = HomeCategorySpecs.firstOrNull { it.id == selectedCategory } ?: HomeCategorySpecs[2]
     val selectedCountryLabel = HomeCountryTabs.firstOrNull { it.id == selectedCountry }?.label ?: "中国"
@@ -140,6 +145,11 @@ fun HomeScreen(
         HOME_MODE_HISTORY -> "观看历史"
         else -> "$selectedCountryLabel · ${currentCategory.label}"
     }
+    val countryFocusRequesters = remember {
+        HomeCountryTabs.associate { it.id to FocusRequester() }
+    }
+    val selectedCountryFocusRequester = countryFocusRequesters[selectedCountry]
+        ?: countryFocusRequesters.getValue(HomeCountryTabs.first().id)
     val platformDensity = LocalDensity.current
 
     CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
@@ -158,6 +168,7 @@ fun HomeScreen(
                 onFavorites = { contentMode = HOME_MODE_FAVORITES },
                 onHistory = { contentMode = HOME_MODE_HISTORY },
                 onSettings = onSettings,
+                downFocusRequester = selectedCountryFocusRequester,
             )
             if (state.isRefreshing) {
                 LinearProgressIndicator(
@@ -170,6 +181,7 @@ fun HomeScreen(
             }
             CountryTabBar(
                 selectedCountry = selectedCountry,
+                countryFocusRequesters = countryFocusRequesters,
                 onEdit = { onUnavailableFeature("国家编辑") },
                 onCountrySelected = {
                     selectedCountry = it
@@ -211,6 +223,7 @@ private fun GlobalTopBar(
     onFavorites: () -> Unit,
     onHistory: () -> Unit,
     onSettings: () -> Unit,
+    downFocusRequester: FocusRequester,
 ) {
     val statusText = when {
         isRefreshing -> "正在同步"
@@ -225,6 +238,10 @@ private fun GlobalTopBar(
         syncSummary.playlistLastSuccessAt != null -> WhaleTokens.Green
         else -> WhaleTokens.SecondaryText
     }
+    val searchFocusRequester = remember { FocusRequester() }
+    val favoritesFocusRequester = remember { FocusRequester() }
+    val historyFocusRequester = remember { FocusRequester() }
+    val settingsFocusRequester = remember { FocusRequester() }
 
     Row(
         modifier = Modifier
@@ -243,13 +260,61 @@ private fun GlobalTopBar(
             modifier = Modifier.padding(start = 12.dp),
         )
         Spacer(Modifier.weight(1f))
-        TopBarAction(text = "搜索", icon = Icons.Default.Search, active = false, onClick = onSearch)
+        TopBarAction(
+            text = "搜索",
+            icon = Icons.Default.Search,
+            active = false,
+            onClick = onSearch,
+            downFocusRequester = downFocusRequester,
+            modifier = Modifier
+                .focusRequester(searchFocusRequester)
+                .focusProperties {
+                    left = FocusRequester.Cancel
+                    right = favoritesFocusRequester
+                },
+        )
         Spacer(Modifier.width(32.dp))
-        TopBarAction(text = "收藏", icon = Icons.Default.FavoriteBorder, active = activeMode == HOME_MODE_FAVORITES, onClick = onFavorites)
+        TopBarAction(
+            text = "收藏",
+            icon = Icons.Default.FavoriteBorder,
+            active = activeMode == HOME_MODE_FAVORITES,
+            onClick = onFavorites,
+            downFocusRequester = downFocusRequester,
+            modifier = Modifier
+                .focusRequester(favoritesFocusRequester)
+                .focusProperties {
+                    left = searchFocusRequester
+                    right = historyFocusRequester
+                },
+        )
         Spacer(Modifier.width(32.dp))
-        TopBarAction(text = "历史", icon = Icons.Default.History, active = activeMode == HOME_MODE_HISTORY, onClick = onHistory)
+        TopBarAction(
+            text = "历史",
+            icon = Icons.Default.History,
+            active = activeMode == HOME_MODE_HISTORY,
+            onClick = onHistory,
+            downFocusRequester = downFocusRequester,
+            modifier = Modifier
+                .focusRequester(historyFocusRequester)
+                .focusProperties {
+                    left = favoritesFocusRequester
+                    right = settingsFocusRequester
+                },
+        )
         Spacer(Modifier.width(32.dp))
-        TopBarAction(text = "设置", icon = Icons.Default.Settings, active = false, onClick = onSettings)
+        TopBarAction(
+            text = "设置",
+            icon = Icons.Default.Settings,
+            active = false,
+            onClick = onSettings,
+            downFocusRequester = downFocusRequester,
+            modifier = Modifier
+                .focusRequester(settingsFocusRequester)
+                .focusProperties {
+                    left = historyFocusRequester
+                    right = FocusRequester.Cancel
+                },
+        )
         Box(
             modifier = Modifier
                 .padding(horizontal = 22.dp)
@@ -282,14 +347,42 @@ private fun TopBarAction(
     icon: ImageVector,
     active: Boolean,
     onClick: () -> Unit,
+    downFocusRequester: FocusRequester? = null,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val highlighted = active || focused
+    val shape = RoundedCornerShape(8.dp)
+    val backgroundColor = when {
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.15f)
+        active -> WhaleTokens.Cyan.copy(alpha = 0.07f)
+        else -> Color.Transparent
+    }
+    val borderColor = when {
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.68f)
+        active -> WhaleTokens.Cyan.copy(alpha = 0.26f)
+        else -> Color.Transparent
+    }
+    val actionColor = if (focused || active) WhaleTokens.Cyan else WhaleTokens.SecondaryText
     Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (highlighted) Color.White.copy(alpha = 0.05f) else Color.Transparent)
+        modifier = modifier
+            .clip(shape)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, shape)
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (downFocusRequester == null || event.key != Key.DirectionDown) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.type) {
+                    KeyEventType.KeyDown -> {
+                        downFocusRequester.requestFocus()
+                        true
+                    }
+                    KeyEventType.KeyUp -> true
+                    else -> false
+                }
+            }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -299,19 +392,26 @@ private fun TopBarAction(
         Icon(
             imageVector = icon,
             contentDescription = text,
-            tint = if (highlighted) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
+            tint = actionColor,
             modifier = Modifier.size(20.dp),
         )
-        Text(text, color = WhaleTokens.PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Text(
+            text,
+            color = if (focused) WhaleTokens.PrimaryText else if (active) WhaleTokens.Cyan else WhaleTokens.PrimaryText,
+            fontSize = 14.sp,
+            fontWeight = if (focused || active) FontWeight.SemiBold else FontWeight.Medium,
+        )
     }
 }
 
 @Composable
 private fun CountryTabBar(
     selectedCountry: String,
+    countryFocusRequesters: Map<String, FocusRequester>,
     onEdit: () -> Unit,
     onCountrySelected: (String) -> Unit,
 ) {
+    val editFocusRequester = remember { FocusRequester() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -329,14 +429,30 @@ private fun CountryTabBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        HomeCountryTabs.forEach { country ->
+        HomeCountryTabs.forEachIndexed { index, country ->
+            val tabFocusRequester = countryFocusRequesters.getValue(country.id)
             CountryTab(
                 country = country,
                 selected = selectedCountry == country.id,
                 onClick = { onCountrySelected(country.id) },
+                modifier = Modifier
+                    .focusRequester(tabFocusRequester)
+                    .focusProperties {
+                        if (index == 0) {
+                            left = FocusRequester.Cancel
+                        }
+                        if (index == HomeCountryTabs.lastIndex) {
+                            right = editFocusRequester
+                        }
+                    },
             )
         }
-        CountryEditButton(onClick = onEdit)
+        CountryEditButton(
+            onClick = onEdit,
+            modifier = Modifier
+                .focusRequester(editFocusRequester)
+                .focusProperties { right = FocusRequester.Cancel },
+        )
     }
 }
 
@@ -345,20 +461,34 @@ private fun CountryTab(
     country: HomeCountryTabSpec,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val active = selected || focused
+    val shape = RoundedCornerShape(8.dp)
+    val backgroundColor = when {
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.15f)
+        selected -> WhaleTokens.Cyan.copy(alpha = 0.07f)
+        else -> Color.Transparent
+    }
+    val borderColor = when {
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.68f)
+        selected -> WhaleTokens.Cyan.copy(alpha = 0.26f)
+        else -> Color.Transparent
+    }
+    val borderWidth = if (focused || selected) 1.dp else 0.dp
+    val contentColor = if (focused || selected) WhaleTokens.Cyan else Color(0xFF7A8EAA)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (active) WhaleTokens.Cyan.copy(alpha = 0.10f) else Color.Transparent)
+            .clip(shape)
+            .background(backgroundColor)
             .border(
-                width = if (selected) 1.dp else 0.dp,
-                color = if (selected) WhaleTokens.Cyan.copy(alpha = 0.65f) else Color.Transparent,
-                shape = RoundedCornerShape(20.dp),
+                width = borderWidth,
+                color = borderColor,
+                shape = shape,
             )
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
@@ -369,33 +499,50 @@ private fun CountryTab(
             Icon(
                 imageVector = Icons.Default.Lock,
                 contentDescription = null,
-                tint = if (active) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
+                tint = contentColor,
                 modifier = Modifier.size(14.dp),
             )
         }
         Text(
             text = country.label,
-            color = if (active) WhaleTokens.Cyan else Color(0xFF7A8EAA),
+            color = contentColor,
             fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
+            fontWeight = if (focused || selected) FontWeight.SemiBold else FontWeight.Medium,
         )
     }
 }
 
 @Composable
-private fun CountryEditButton(onClick: () -> Unit) {
+private fun CountryEditButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+    val backgroundColor = if (focused) WhaleTokens.Cyan.copy(alpha = 0.15f) else Color.Transparent
+    val borderColor = if (focused) WhaleTokens.Cyan.copy(alpha = 0.68f) else Color.Transparent
+    val contentColor = if (focused) WhaleTokens.Cyan else WhaleTokens.SecondaryText
     Row(
-        modifier = Modifier
+        modifier = modifier
             .height(40.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(shape)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(Icons.Default.Edit, contentDescription = null, tint = WhaleTokens.SecondaryText, modifier = Modifier.size(16.dp))
-        Text("编辑", color = WhaleTokens.SecondaryText, fontSize = 16.sp)
+        Icon(Icons.Default.Edit, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+        Text(
+            "编辑",
+            color = contentColor,
+            fontSize = 16.sp,
+            fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
+        )
     }
 }
 
@@ -433,14 +580,29 @@ private fun CategoryRow(
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val active = selected || focused
+    val shape = RoundedCornerShape(14.dp)
+    val backgroundColor = when {
+        focused && selected -> WhaleTokens.Cyan.copy(alpha = 0.16f)
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.10f)
+        selected -> WhaleTokens.SurfaceRaised
+        else -> Color.Transparent
+    }
+    val borderColor = when {
+        focused && selected -> WhaleTokens.Cyan.copy(alpha = 0.78f)
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.58f)
+        else -> Color.Transparent
+    }
+    val contentColor = if (focused || selected) WhaleTokens.Cyan else WhaleTokens.PrimaryText
+    val iconColor = if (focused || selected) WhaleTokens.Cyan else Color(0xFF7A8EAA)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (active) WhaleTokens.SurfaceRaised else Color.Transparent)
+            .clip(shape)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, shape)
             .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(onClick = onClick)
             .focusable()
             .clickable(onClick = onClick),
     ) {
@@ -450,7 +612,7 @@ private fun CategoryRow(
                     .align(Alignment.CenterStart)
                     .width(4.dp)
                     .height(28.dp)
-                    .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
+                    .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
                     .background(WhaleTokens.Cyan),
             )
         }
@@ -463,20 +625,20 @@ private fun CategoryRow(
             Icon(
                 imageVector = category.icon(),
                 contentDescription = null,
-                tint = if (active) WhaleTokens.Cyan else Color(0xFF7A8EAA),
+                tint = iconColor,
                 modifier = Modifier.size(20.dp),
             )
             Text(
                 text = category.label,
-                color = if (active) WhaleTokens.Cyan else WhaleTokens.PrimaryText,
+                color = contentColor,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (focused || selected) FontWeight.SemiBold else FontWeight.Medium,
                 modifier = Modifier.padding(start = 12.dp),
             )
             Spacer(Modifier.weight(1f))
             Text(
                 text = count.toString(),
-                color = if (active) WhaleTokens.Cyan.copy(alpha = 0.85f) else Color(0xFF5E7090),
+                color = if (focused || selected) WhaleTokens.Cyan.copy(alpha = 0.90f) else Color(0xFF5E7090),
                 fontSize = 14.sp,
             )
         }
@@ -504,6 +666,16 @@ private fun List<TvChannel>.sortedForHomeBrowse(): List<TvChannel> {
             .thenBy { it.priority }
             .thenBy { it.name },
     )
+}
+
+private fun homeCategoryCounts(channels: List<TvChannel>): Map<String, Int> {
+    val counts = HomeCategorySpecs.associate { it.id to 0 }.toMutableMap()
+    counts["all"] = channels.size
+    channels.forEach { channel ->
+        val categoryId = channel.homeCategoryId()
+        counts[categoryId] = (counts[categoryId] ?: 0) + 1
+    }
+    return counts
 }
 
 private fun homeGridItemsForCategory(
@@ -569,6 +741,9 @@ private fun ChannelContent(
     val firstItemKey = cardItems.firstOrNull()?.key
     val firstCardFocusRequester = remember(firstItemKey) { FocusRequester() }
     var highlightedCardKey by remember(firstItemKey) { mutableStateOf(firstItemKey) }
+    var gridFocused by remember(firstItemKey) { mutableStateOf(false) }
+    var refreshFocused by remember { mutableStateOf(false) }
+    val refreshShape = RoundedCornerShape(8.dp)
     LaunchedEffect(firstItemKey) {
         if (firstItemKey != null) {
             delay(120)
@@ -614,13 +789,22 @@ private fun ChannelContent(
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "刷新",
-                tint = WhaleTokens.SecondaryText,
+                tint = if (refreshFocused) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
                 modifier = Modifier
                     .padding(start = 12.dp)
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .size(32.dp)
+                    .clip(refreshShape)
+                    .background(if (refreshFocused) WhaleTokens.Cyan.copy(alpha = 0.14f) else Color.Transparent)
+                    .border(
+                        1.dp,
+                        if (refreshFocused) WhaleTokens.Cyan.copy(alpha = 0.68f) else Color.Transparent,
+                        refreshShape,
+                    )
+                    .onFocusChanged { refreshFocused = it.isFocused }
+                    .tvRemoteClick(onClick = onRefresh)
+                    .focusable()
                     .clickable(onClick = onRefresh)
-                    .padding(6.dp),
+                    .padding(7.dp),
             )
         }
         Spacer(Modifier.height(20.dp))
@@ -646,8 +830,9 @@ private fun ChannelContent(
                         }
                         HomeChannelCard(
                             item = item,
-                            highlighted = item.key == highlightedCardKey,
+                            highlighted = gridFocused && item.key == highlightedCardKey,
                             onFocused = { highlightedCardKey = item.key },
+                            onFocusChanged = { focused -> gridFocused = focused },
                             onClick = { onChannelSelected(item.key) },
                             modifier = cardModifier
                                 .fillMaxWidth()

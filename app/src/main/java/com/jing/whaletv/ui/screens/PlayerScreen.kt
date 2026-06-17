@@ -7,16 +7,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -27,6 +33,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +41,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,8 +59,11 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -66,16 +77,17 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.ui.PlayerView
 import com.jing.whaletv.data.model.Program
-import com.jing.whaletv.data.model.StreamHealth
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.data.model.nextPlaybackStreamIndex
 import com.jing.whaletv.data.model.playbackStreams
+import com.jing.whaletv.ui.components.tvRemoteClick
 import com.jing.whaletv.ui.theme.WhaleTokens
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -203,7 +215,7 @@ fun PlayerScreen(
                     if (nextIndex < streams.size) {
                         streamIndex = nextIndex
                     } else {
-                        errorMessage = error.message?.takeIf { it.isNotBlank() } ?: "全部播放源都无法播放"
+                        errorMessage = "无法播放"
                     }
                     revealOverlay()
                 }
@@ -248,8 +260,6 @@ fun PlayerScreen(
                 currentStream = currentStream,
                 sourceIndex = streamIndex,
                 sourceTotal = streams.size,
-                statusText = playbackStatusText(playbackState, currentStream, errorMessage),
-                statusColor = playbackStatusColor(playbackState, currentStream, errorMessage),
                 canRetry = currentStream != null,
                 canSwitchSource = streams.size > 1,
                 onClose = onClose,
@@ -266,13 +276,7 @@ fun PlayerScreen(
         }
 
         if (currentStream == null || errorMessage != null) {
-            PlayerErrorState(
-                message = errorMessage ?: "频道暂无可播放源",
-                canRetry = currentStream != null,
-                canSwitchSource = streams.size > 1,
-                onRetry = ::retryCurrentSource,
-                onNextSource = ::switchToNextSource,
-                onClose = onClose,
+            PlayerUnavailableHint(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
@@ -299,8 +303,6 @@ private fun PlayerOverlay(
     currentStream: TvStream?,
     sourceIndex: Int,
     sourceTotal: Int,
-    statusText: String,
-    statusColor: Color,
     canRetry: Boolean,
     canSwitchSource: Boolean,
     onClose: () -> Unit,
@@ -309,23 +311,31 @@ private fun PlayerOverlay(
     onToggleFavorite: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val platformDensity = LocalDensity.current
+
     Box(modifier = modifier) {
-        PlayerTopOverlay(
-            channel = channel,
-            favorite = favorite,
-            currentStream = currentStream,
-            sourceIndex = sourceIndex,
-            sourceTotal = sourceTotal,
-            statusText = statusText,
-            statusColor = statusColor,
-            canRetry = canRetry,
-            canSwitchSource = canSwitchSource,
-            onClose = onClose,
-            onRetry = onRetry,
-            onNextSource = onNextSource,
-            onToggleFavorite = onToggleFavorite,
-            modifier = Modifier.align(Alignment.TopCenter),
+        PlayerBackButton(
+            onClick = onClose,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 28.dp, top = 24.dp),
         )
+        CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
+            PlayerActionRail(
+                favorite = favorite,
+                currentStream = currentStream,
+                sourceIndex = sourceIndex,
+                sourceTotal = sourceTotal,
+                canRetry = canRetry,
+                canSwitchSource = canSwitchSource,
+                onRetry = onRetry,
+                onNextSource = onNextSource,
+                onToggleFavorite = onToggleFavorite,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 132.dp, end = 48.dp),
+            )
+        }
         PlayerProgramOverlay(
             currentProgram = channel.currentProgram,
             nextProgram = channel.nextProgram,
@@ -337,194 +347,156 @@ private fun PlayerOverlay(
 }
 
 @Composable
-private fun PlayerTopOverlay(
-    channel: TvChannel,
+private fun PlayerBackButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val backgroundColor = if (focused) {
+        WhaleTokens.Cyan.copy(alpha = 0.16f)
+    } else {
+        PlayerGlassColor.copy(alpha = 0.52f)
+    }
+    val borderColor = if (focused) {
+        WhaleTokens.Cyan.copy(alpha = 0.82f)
+    } else {
+        Color.White.copy(alpha = 0.10f)
+    }
+
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .shadow(if (focused) 9.dp else 0.dp, shape = PlayerButtonShape, clip = false)
+            .clip(PlayerButtonShape)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, PlayerButtonShape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(onClick = onClick)
+            .focusable()
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "返回",
+            tint = WhaleTokens.PrimaryText,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+@Composable
+private fun PlayerActionRail(
     favorite: Boolean,
     currentStream: TvStream?,
     sourceIndex: Int,
     sourceTotal: Int,
-    statusText: String,
-    statusColor: Color,
     canRetry: Boolean,
     canSwitchSource: Boolean,
-    onClose: () -> Unit,
     onRetry: () -> Unit,
     onNextSource: () -> Unit,
     onToggleFavorite: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    val favoriteFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { favoriteFocusRequester.requestFocus() }
+    }
+
+    Column(
         modifier = modifier
-            .fillMaxWidth()
-            .height(112.dp)
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.34f), Color.Transparent),
-                ),
-            )
-            .padding(horizontal = 34.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .width(PlayerRailWidth)
+            .clip(PlayerRailShape)
+            .background(PlayerGlassColor.copy(alpha = 0.76f))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), PlayerRailShape)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        PlayerOverlayButton(onClick = onClose) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = WhaleTokens.PrimaryText, modifier = Modifier.size(22.dp))
-        }
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = channel.name,
-                color = WhaleTokens.PrimaryText,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                PlayerInfoChip(text = statusText, color = statusColor)
-                channel.groupTitle.takeIf { it.isNotBlank() }?.let { groupTitle ->
-                    PlayerInfoChip(text = groupTitle, color = WhaleTokens.TertiaryText)
-                }
-            }
-        }
-        PlayerSourcePanel(
+        PlayerRailButton(
+            text = "重试",
+            icon = Icons.Default.Refresh,
+            contentDescription = "重试当前源",
+            enabled = canRetry,
+            onClick = onRetry,
+        )
+        PlayerRailDivider()
+        PlayerRailButton(
+            text = "下一个源",
+            icon = Icons.Default.SkipNext,
+            contentDescription = "切换下一个源",
+            enabled = canSwitchSource,
+            onClick = onNextSource,
+        )
+        PlayerRailDivider()
+        PlayerRailButton(
+            text = if (favorite) "已收藏" else "收藏",
+            icon = if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+            contentDescription = if (favorite) "取消收藏" else "收藏",
+            active = favorite,
+            onClick = onToggleFavorite,
+            modifier = Modifier.focusRequester(favoriteFocusRequester),
+        )
+        PlayerRailDivider()
+        PlayerSourceStatusCompact(
             stream = currentStream,
             sourceIndex = sourceIndex,
             sourceTotal = sourceTotal,
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            PlayerLabeledOverlayButton(
-                text = "重试",
-                icon = Icons.Default.Refresh,
-                contentDescription = "重试当前源",
-                enabled = canRetry,
-                onClick = onRetry,
-            )
-            PlayerLabeledOverlayButton(
-                text = "下一个源",
-                icon = Icons.Default.SkipNext,
-                contentDescription = "切换下一个源",
-                enabled = canSwitchSource,
-                onClick = onNextSource,
-            )
-            PlayerOverlayButton(onClick = onToggleFavorite, active = favorite) {
-                Icon(
-                    imageVector = if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (favorite) "取消收藏" else "收藏",
-                    tint = if (favorite) WhaleTokens.Cyan else WhaleTokens.PrimaryText,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
     }
 }
 
 @Composable
-private fun PlayerSourcePanel(
+private fun PlayerRailDivider() {
+    Box(
+        modifier = Modifier
+            .width(72.dp)
+            .height(1.dp)
+            .background(Color.White.copy(alpha = 0.12f)),
+    )
+}
+
+@Composable
+private fun PlayerSourceStatusCompact(
     stream: TvStream?,
     sourceIndex: Int,
     sourceTotal: Int,
 ) {
-    val healthColor = streamHealthColor(stream?.healthStatus)
-    val sourceNumber = if (sourceTotal > 0) {
+    val sourceText = if (sourceTotal > 0) {
         "源 ${sourceIndex.coerceIn(0, sourceTotal - 1) + 1}/$sourceTotal"
     } else {
-        "无可用播放源"
+        "无播放源"
     }
-    val qualityText = stream?.quality?.takeIf { it.isNotBlank() } ?: "未知清晰度"
+    val qualityText = stream?.quality?.takeIf { it.isNotBlank() } ?: "未知"
 
-    Row(
+    Column(
         modifier = Modifier
-            .width(252.dp)
-            .height(62.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF151921).copy(alpha = 0.78f))
-            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 14.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .fillMaxWidth()
+            .height(PlayerRailStatusHeight)
+            .padding(horizontal = 13.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = "当前播放源",
-                color = WhaleTokens.TertiaryText,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
-            Text(
-                text = sourceNumber,
-                color = WhaleTokens.PrimaryText,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-            )
-        }
-        Column(
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Text(
-                text = qualityText,
-                color = WhaleTokens.SecondaryText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            PlayerHealthChip(text = streamHealthText(stream?.healthStatus), color = healthColor)
-        }
-    }
-}
-
-@Composable
-private fun PlayerHealthChip(text: String, color: Color) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(color.copy(alpha = 0.12f))
-            .border(1.dp, color.copy(alpha = 0.24f), RoundedCornerShape(999.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(5.dp)
-                .clip(RoundedCornerShape(50))
-                .background(color),
+        Text(
+            text = qualityText,
+            color = WhaleTokens.PrimaryText,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
         )
-        Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-    }
-}
-
-@Composable
-private fun PlayerInfoChip(text: String, color: Color) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color(0xFF151921).copy(alpha = 0.48f))
-            .border(1.dp, Color.White.copy(alpha = 0.045f), RoundedCornerShape(999.dp))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(5.dp)
-                .clip(RoundedCornerShape(50))
-                .background(color),
+        Text(
+            text = sourceText,
+            color = WhaleTokens.SecondaryText,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
         )
-        Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }
 
@@ -536,64 +508,236 @@ private fun PlayerProgramOverlay(
     now: Long,
     modifier: Modifier = Modifier,
 ) {
+    val platformDensity = LocalDensity.current
     val upcomingPrograms = schedulePrograms
         .filterNot { program -> currentProgram?.let { program.isSameScheduleProgram(it) } == true }
         .ifEmpty { listOfNotNull(nextProgram) }
         .distinctBy { "${it.channelId}|${it.startAt}|${it.title}" }
-        .take(PLAYER_SCHEDULE_UPCOMING_LIMIT)
     if (currentProgram == null && upcomingPrograms.isEmpty()) return
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.58f), Color.Black.copy(alpha = 0.86f)),
-                ),
-            )
-            .padding(start = 40.dp, end = 40.dp, top = 74.dp, bottom = 34.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        currentProgram?.let { program ->
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PlayerSectionLabel("正在播出")
-                    Text(programTimeRange(program), color = WhaleTokens.TertiaryText, fontSize = 12.sp)
-                }
-                Text(
-                    text = program.title,
-                    color = WhaleTokens.PrimaryText,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+    CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.28f),
+                            Color.Black.copy(alpha = 0.66f),
+                        ),
+                    ),
                 )
-                programProgress(program, now)?.let { progress ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(Color.White.copy(alpha = 0.14f)),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(progress)
-                                .height(4.dp)
-                                .background(WhaleTokens.Cyan),
-                        )
-                    }
-                }
+                .padding(start = 90.dp, end = 90.dp, top = 86.dp, bottom = 34.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(188.dp)
+                    .clip(PlayerPanelShape)
+                    .background(PlayerGlassColor.copy(alpha = 0.76f))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), PlayerPanelShape)
+                    .padding(horizontal = 34.dp, vertical = 26.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(34.dp),
+            ) {
+                PlayerCurrentProgramBlock(
+                    program = currentProgram,
+                    now = now,
+                    modifier = Modifier.weight(1.95f),
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(128.dp)
+                        .background(Color.White.copy(alpha = 0.12f)),
+                )
+                PlayerUpcomingProgramBlock(
+                    programs = upcomingPrograms,
+                    modifier = Modifier.weight(1.05f),
+                )
             }
         }
-        if (upcomingPrograms.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
-                PlayerSectionLabel("接下来")
-                upcomingPrograms.forEachIndexed { index, program ->
-                    PlayerScheduleRow(
-                        index = index,
-                        program = program,
+    }
+}
+
+@Composable
+private fun PlayerCurrentProgramBlock(
+    program: Program?,
+    now: Long,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(15.dp),
+    ) {
+        Text(
+            text = program?.title ?: "暂无当前节目单",
+            color = WhaleTokens.PrimaryText,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (program != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = programTimeRange(program),
+                    color = WhaleTokens.TertiaryText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "直播中",
+                    color = WhaleTokens.Green,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
+            programProgress(program, now)?.let { progress ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                ) {
+                    PlayerProgramProgressBar(
+                        progress = progress,
+                        modifier = Modifier.weight(1f),
                     )
+                    PlayerProgramElapsedText(program = program, now = now)
+                }
+            }
+        } else {
+            Text(
+                text = "等待节目单更新",
+                color = WhaleTokens.TertiaryText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerProgramProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    val clampedProgress = progress.coerceIn(0f, 1f)
+
+    BoxWithConstraints(
+        modifier = modifier.height(16.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val knobSize = 14.dp
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White.copy(alpha = 0.16f)),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(clampedProgress)
+                .height(6.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(WhaleTokens.Cyan),
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = (maxWidth - knobSize) * clampedProgress)
+                .size(knobSize)
+                .clip(RoundedCornerShape(999.dp))
+                .background(WhaleTokens.Cyan),
+        )
+    }
+}
+
+@Composable
+private fun PlayerProgramElapsedText(program: Program, now: Long) {
+    val duration = (program.endAt - program.startAt).coerceAtLeast(0L)
+    val elapsed = (now - program.startAt).coerceIn(0L, duration)
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = formatProgramDuration(elapsed),
+            color = WhaleTokens.Cyan,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+        Text(
+            text = "/ ${formatProgramDuration(duration)}",
+            color = WhaleTokens.TertiaryText,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun PlayerUpcomingProgramBlock(
+    programs: List<Program>,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        PlayerSectionLabel("接下来")
+        if (programs.isEmpty()) {
+            Text(
+                text = "暂无后续节目",
+                color = WhaleTokens.TertiaryText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) {
+                            return@onPreviewKeyEvent event.key == Key.DirectionUp || event.key == Key.DirectionDown
+                        }
+                        val currentIndex = listState.firstVisibleItemIndex
+                        val targetIndex = when (event.key) {
+                            Key.DirectionDown -> (currentIndex + 1).coerceAtMost(programs.lastIndex)
+                            Key.DirectionUp -> (currentIndex - 1).coerceAtLeast(0)
+                            else -> return@onPreviewKeyEvent false
+                        }
+                        if (targetIndex == currentIndex) {
+                            return@onPreviewKeyEvent false
+                        }
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(targetIndex)
+                        }
+                        true
+                    }
+                    .focusable(),
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(
+                    items = programs,
+                    key = { program -> "${program.channelId}|${program.startAt}|${program.title}" },
+                ) { program ->
+                    PlayerScheduleRow(program = program)
                 }
             }
         }
@@ -605,36 +749,32 @@ private fun PlayerSectionLabel(text: String) {
     Text(
         text = text,
         color = WhaleTokens.Cyan,
-        fontSize = 13.sp,
+        fontSize = 17.sp,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
     )
 }
 
 @Composable
-private fun PlayerScheduleRow(index: Int, program: Program) {
+private fun PlayerScheduleRow(program: Program) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Text(
-            text = "${index + 1}",
-            color = if (index == 0) WhaleTokens.Cyan else WhaleTokens.TertiaryText,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.width(20.dp),
-        )
-        Text(
-            text = programTimeRange(program),
+            text = formatProgramTime(program.startAt),
             color = WhaleTokens.TertiaryText,
-            fontSize = 12.sp,
-            modifier = Modifier.width(82.dp),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(66.dp),
+            maxLines = 1,
         )
         Text(
             text = program.title,
             color = WhaleTokens.SecondaryText,
-            fontSize = 13.sp,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -642,186 +782,96 @@ private fun PlayerScheduleRow(index: Int, program: Program) {
     }
 }
 
+private fun formatProgramDuration(value: Long): String {
+    val totalSeconds = (value / 1_000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return "${hours.twoDigits()}:${minutes.twoDigits()}:${seconds.twoDigits()}"
+}
+
+private fun Long.twoDigits(): String = if (this < 10L) "0$this" else toString()
+
 @Composable
-private fun PlayerLabeledOverlayButton(
+private fun PlayerRailButton(
     text: String,
     icon: ImageVector,
     contentDescription: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
-    val backgroundColor = when {
-        !enabled -> Color(0xFF151921).copy(alpha = 0.30f)
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.14f)
-        else -> Color(0xFF151921).copy(alpha = 0.72f)
-    }
-    val borderColor = when {
-        !enabled -> Color.White.copy(alpha = 0.045f)
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.72f)
-        else -> Color.White.copy(alpha = 0.10f)
-    }
-
-    Row(
-        modifier = Modifier
-            .height(44.dp)
-            .shadow(if (focused) 9.dp else 0.dp, shape = shape, clip = false)
-            .clip(shape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
-            .onFocusChanged { focused = it.isFocused }
-            .focusable(enabled = enabled)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Icon(icon, contentDescription = contentDescription, tint = buttonIconColor(enabled), modifier = Modifier.size(20.dp))
-        Text(
-            text = text,
-            color = if (enabled) WhaleTokens.PrimaryText else WhaleTokens.SecondaryText.copy(alpha = 0.38f),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun PlayerOverlayButton(
-    onClick: () -> Unit,
     enabled: Boolean = true,
     active: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
-    val backgroundColor = when {
-        !enabled -> Color(0xFF151921).copy(alpha = 0.30f)
-        active || focused -> WhaleTokens.Cyan.copy(alpha = 0.14f)
-        else -> Color(0xFF151921).copy(alpha = 0.72f)
-    }
-    val borderColor = when {
-        !enabled -> Color.White.copy(alpha = 0.045f)
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.72f)
-        active -> WhaleTokens.Cyan.copy(alpha = 0.32f)
-        else -> Color.White.copy(alpha = 0.10f)
-    }
-
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .shadow(if (focused) 9.dp else 0.dp, shape = shape, clip = false)
-            .clip(shape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
-            .onFocusChanged { focused = it.isFocused }
-            .focusable(enabled = enabled)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
-    }
-}
-
-@Composable
-private fun PlayerErrorState(
-    message: String,
-    canRetry: Boolean,
-    canSwitchSource: Boolean,
-    onRetry: () -> Unit,
-    onNextSource: () -> Unit,
-    onClose: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var focused by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val backgroundColor = when {
+        !enabled -> Color.Transparent
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.13f)
+        active -> WhaleTokens.Cyan.copy(alpha = 0.07f)
+        else -> Color.Transparent
+    }
+    val borderColor = when {
+        !enabled -> Color.Transparent
+        focused -> WhaleTokens.Cyan.copy(alpha = 0.82f)
+        active -> WhaleTokens.Cyan.copy(alpha = 0.28f)
+        else -> Color.Transparent
+    }
+    val contentColor = when {
+        !enabled -> WhaleTokens.SecondaryText.copy(alpha = 0.32f)
+        active || focused -> WhaleTokens.PrimaryText
+        else -> WhaleTokens.SecondaryText
+    }
+
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.Black.copy(alpha = 0.78f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-            .padding(horizontal = 28.dp, vertical = 22.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text(message, color = WhaleTokens.PrimaryText, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 2)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            PlayerTextButton(text = "重试", enabled = canRetry, onClick = onRetry)
-            PlayerTextButton(text = "下一个源", enabled = canSwitchSource, onClick = onNextSource)
-            PlayerTextButton(text = "返回首页", enabled = true, onClick = onClose)
-        }
-    }
-}
-
-@Composable
-private fun PlayerTextButton(text: String, enabled: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (enabled) WhaleTokens.Cyan.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.05f))
-            .border(
-                1.dp,
-                if (enabled) WhaleTokens.Cyan.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.06f),
-                RoundedCornerShape(8.dp),
-            )
+            .fillMaxWidth()
+            .height(PlayerRailButtonHeight)
+            .shadow(if (focused) 8.dp else 0.dp, shape = PlayerRailItemShape, clip = false)
+            .clip(PlayerRailItemShape)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, PlayerRailItemShape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvRemoteClick(enabled = enabled, onClick = onClick)
             .focusable(enabled = enabled)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 9.dp),
-        contentAlignment = Alignment.Center,
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 8.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
     ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) contentColor else WhaleTokens.SecondaryText.copy(alpha = 0.32f),
+            modifier = Modifier.size(32.dp),
+        )
         Text(
             text = text,
-            color = if (enabled) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
-            fontSize = 14.sp,
+            color = contentColor,
+            fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
 
-private fun streamHealthText(healthStatus: StreamHealth?): String {
-    return when (healthStatus) {
-        StreamHealth.HEALTHY -> "健康"
-        StreamHealth.DEGRADED -> "待观察"
-        StreamHealth.UNHEALTHY -> "不可用"
-        StreamHealth.UNKNOWN, null -> "未探测"
-    }
-}
-
-private fun streamHealthColor(healthStatus: StreamHealth?): Color {
-    return when (healthStatus) {
-        StreamHealth.HEALTHY -> WhaleTokens.Green
-        StreamHealth.DEGRADED -> WhaleTokens.Gold
-        StreamHealth.UNHEALTHY -> WhaleTokens.Red
-        StreamHealth.UNKNOWN, null -> WhaleTokens.TertiaryText
-    }
-}
-
-private fun playbackStatusText(
-    playbackState: Int,
-    currentStream: TvStream?,
-    errorMessage: String?,
-): String {
-    return when {
-        currentStream == null -> "无可用播放源"
-        errorMessage != null -> "播放失败"
-        playbackState == Player.STATE_BUFFERING -> "正在缓冲"
-        playbackState == Player.STATE_READY -> "播放中"
-        playbackState == Player.STATE_ENDED -> "已结束"
-        else -> "准备播放"
-    }
-}
-
-private fun playbackStatusColor(
-    playbackState: Int,
-    currentStream: TvStream?,
-    errorMessage: String?,
-): Color {
-    return when {
-        currentStream == null || errorMessage != null -> WhaleTokens.Red
-        playbackState == Player.STATE_READY -> WhaleTokens.Green
-        playbackState == Player.STATE_BUFFERING -> WhaleTokens.Cyan
-        else -> WhaleTokens.TertiaryText
-    }
+@Composable
+private fun PlayerUnavailableHint(modifier: Modifier = Modifier) {
+    Text(
+        text = "无法播放",
+        color = WhaleTokens.PrimaryText,
+        fontSize = 22.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        modifier = modifier,
+    )
 }
 
 private fun programProgress(program: Program, now: Long): Float? {
@@ -842,9 +892,14 @@ private fun formatProgramTime(value: Long): String {
     return ProgramTimeFormatter.format(Instant.ofEpochMilli(value))
 }
 
-private fun buttonIconColor(enabled: Boolean): Color {
-    return if (enabled) WhaleTokens.PrimaryText else WhaleTokens.SecondaryText.copy(alpha = 0.38f)
-}
+private val PlayerPanelShape = RoundedCornerShape(12.dp)
+private val PlayerButtonShape = RoundedCornerShape(9.dp)
+private val PlayerRailShape = PlayerPanelShape
+private val PlayerRailItemShape = RoundedCornerShape(8.dp)
+private val PlayerGlassColor = Color(0xFF111722)
+private val PlayerRailWidth = 116.dp
+private val PlayerRailButtonHeight = 112.dp
+private val PlayerRailStatusHeight = 106.dp
 
 private val PlayerOverlayRevealKeys = setOf(
     Key.DirectionUp,
@@ -861,4 +916,3 @@ private val ProgramTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private const val PLAYER_OVERLAY_AUTO_HIDE_MS = 5_000L
 private const val PROGRAM_PROGRESS_TICK_MS = 30_000L
-private const val PLAYER_SCHEDULE_UPCOMING_LIMIT = 5
