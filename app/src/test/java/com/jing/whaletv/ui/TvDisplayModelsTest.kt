@@ -48,6 +48,34 @@ class TvDisplayModelsTest {
     }
 
     @Test
+    fun homeCategoryAddsCctvVirtualBucket() {
+        val cctv1 = channel(id = "CCTV1.cn", name = "CCTV-1", group = "General")
+        val cctv13 = channel(id = "CCTV13.cn", name = "CCTV-13", group = "News")
+        val news = channel(id = "News.cn", name = "普通新闻", group = "News")
+        val channels = listOf(cctv13, news, cctv1)
+
+        assertEquals("cctv", cctv1.homeCategoryId())
+        assertEquals("cctv", cctv13.homeCategoryId())
+        assertEquals(listOf(cctv13, cctv1), homeChannelsForCategory("cctv", channels))
+        assertEquals(1, cctv1.cctvSortKey())
+        assertEquals(13, cctv13.cctvSortKey())
+        assertEquals(4, channel(id = "CCTV4K.cn", name = "CCTV-4K").cctvSortKey())
+        assertEquals(Int.MAX_VALUE, channel(id = "CCTVPlus1.cn", name = "CCTV+ 1").cctvSortKey())
+    }
+
+    @Test
+    fun homeCategoryAddsSatelliteVirtualBucketWithoutCctv() {
+        val satellite = channel(id = "BeijingSatelliteTV.cn", name = "BRTV 北京卫视", group = "General")
+        val cctv = channel(id = "CCTV4Asia.cn", name = "CCTV-4 Asia", group = "General")
+        val general = channel(id = "General.cn", name = "综合频道", group = "General")
+        val channels = listOf(satellite, cctv, general)
+
+        assertEquals("satellite", satellite.homeCategoryId())
+        assertEquals("cctv", cctv.homeCategoryId())
+        assertEquals(listOf(satellite), homeChannelsForCategory("satellite", channels))
+    }
+
+    @Test
     fun favoriteAndHistoryAreGlobalNotCountryScoped() {
         val cnFavorite = channel(id = "A.cn", name = "中国频道", favorite = true)
         val usFavorite = channel(id = "A.us", name = "US Channel", favorite = true, watchedAt = 2_000)

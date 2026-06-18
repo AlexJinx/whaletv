@@ -82,6 +82,7 @@ import com.jing.whaletv.ui.HomeCategorySpecs
 import com.jing.whaletv.ui.HomeCountryTabSpec
 import com.jing.whaletv.ui.HomeCountryTabs
 import com.jing.whaletv.ui.HomeUiState
+import com.jing.whaletv.ui.cctvSortKey
 import com.jing.whaletv.ui.homeCategoryId
 import com.jing.whaletv.ui.homeChannelsForCategory
 import com.jing.whaletv.ui.homeCountryId
@@ -96,6 +97,7 @@ import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private const val HOME_MODE_BROWSE = "browse"
 private const val HOME_MODE_FAVORITES = "favorites"
@@ -113,7 +115,7 @@ fun HomeScreen(
     onUnavailableFeature: (String) -> Unit,
 ) {
     var selectedCountry by rememberSaveable { mutableStateOf("cn") }
-    var selectedCategory by rememberSaveable { mutableStateOf("news") }
+    var selectedCategory by rememberSaveable { mutableStateOf("cctv") }
     var contentMode by rememberSaveable { mutableStateOf(HOME_MODE_BROWSE) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -647,6 +649,8 @@ private fun CategoryRow(
 
 private fun HomeCategorySpec.icon(): ImageVector {
     return when (id) {
+        "cctv" -> Icons.Default.Tv
+        "satellite" -> Icons.Default.WifiTethering
         "all" -> Icons.Default.Folder
         "general" -> Icons.Default.Tv
         "news" -> Icons.AutoMirrored.Filled.Article
@@ -684,6 +688,16 @@ private fun homeGridItemsForCategory(
     countryChannels: List<TvChannel>,
 ): List<ChannelCardItem> {
     val categoryChannels = homeChannelsForCategory(categoryId, countryChannels)
+    if (categoryId == "cctv") {
+        return categoryChannels
+            .sortedWith(compareBy<TvChannel> { it.cctvSortKey() }.thenBy { it.name.lowercase(Locale.ROOT) })
+            .map { it.toChannelCardItem() }
+    }
+    if (categoryId == "satellite") {
+        return categoryChannels
+            .sortedWith(compareBy<TvChannel> { it.name.lowercase(Locale.ROOT) }.thenBy { it.id.lowercase(Locale.ROOT) })
+            .map { it.toChannelCardItem() }
+    }
     if (categoryId != "news" || countryId != "cn") {
         return categoryChannels.sortedForHomeBrowse().map { it.toChannelCardItem() }
     }

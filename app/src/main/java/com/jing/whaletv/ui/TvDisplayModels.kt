@@ -25,6 +25,8 @@ data class HomeCategorySpec(
 )
 
 val HomeCategorySpecs = listOf(
+    HomeCategorySpec("cctv", "央视"),
+    HomeCategorySpec("satellite", "卫视"),
     HomeCategorySpec("all", "全部"),
     HomeCategorySpec("general", "综合"),
     HomeCategorySpec("news", "新闻"),
@@ -77,6 +79,7 @@ private val squarePattern = Regex("""\[([^\]]+)\]""")
 private val codeLikePattern = Regex("""\b([A-Za-z]{2,3})\b""")
 private val qualityResolutionPattern = Regex("""(\d{3,4})[pi]?""", RegexOption.IGNORE_CASE)
 private val channelNumberPattern = Regex("""\d+""")
+private val cctvNumberPattern = Regex("""\bcctv\s*[- ]?\s*(\d{1,2})(?!\d)""", RegexOption.IGNORE_CASE)
 
 fun TvChannel.homeCountryId(): String {
     val idSuffix = id.substringAfterLast('.', "").lowercase(Locale.ROOT).trim('.')
@@ -101,6 +104,9 @@ fun TvChannel.homeCountryLabel(): String {
 }
 
 fun TvChannel.homeCategoryId(): String {
+    if (isCctvChannel()) return "cctv"
+    if (isSatelliteChannel()) return "satellite"
+
     val primary = groupTitle
         .split(';', ',', '|', '/', '，')
         .map { it.trim().lowercase(Locale.ROOT) }
@@ -125,7 +131,12 @@ fun TvChannel.homeCategoryLabel(): String {
 }
 
 fun homeChannelsForCategory(categoryId: String, channels: List<TvChannel>): List<TvChannel> {
-    return if (categoryId == "all") channels else channels.filter { it.homeCategoryId() == categoryId }
+    return when (categoryId) {
+        "all" -> channels
+        "cctv" -> channels.filter { it.isCctvChannel() }
+        "satellite" -> channels.filter { it.isSatelliteChannel() && !it.isCctvChannel() }
+        else -> channels.filter { it.homeCategoryId() == categoryId }
+    }
 }
 
 fun homeFavoriteChannels(channels: List<TvChannel>): List<TvChannel> {
@@ -184,6 +195,30 @@ fun TvChannel.homeLogoSecondaryText(): String? {
 }
 
 fun TvChannel.currentTitle(): String? = currentProgram?.title
+
+fun TvChannel.isCctvChannel(): Boolean {
+    val normalized = "$id $name".lowercase(Locale.ROOT)
+    return normalized.contains("cctv") ||
+        name.contains("央视") ||
+        name.contains("中央电视台")
+}
+
+fun TvChannel.isSatelliteChannel(): Boolean {
+    val normalized = "$id $name $groupTitle".lowercase(Locale.ROOT)
+    return name.contains("卫视") ||
+        normalized.contains("satellite tv") ||
+        normalized.contains("satellitetv") ||
+        normalized.contains("satellite channel")
+}
+
+fun TvChannel.cctvSortKey(): Int {
+    val value = "${id.substringBefore('@')} $name"
+    return cctvNumberPattern.find(value)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+        ?: Int.MAX_VALUE
+}
 
 private fun TvChannel.logoText(): String {
     val normalized = name.replace("高清", "").replace("频道", "").trim()
