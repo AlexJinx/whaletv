@@ -115,7 +115,7 @@ fun HomeScreen(
     onUnavailableFeature: (String) -> Unit,
 ) {
     var selectedCountry by rememberSaveable { mutableStateOf("cn") }
-    var selectedCategory by rememberSaveable { mutableStateOf("cctv") }
+    var selectedCategory by rememberSaveable { mutableStateOf("all") }
     var contentMode by rememberSaveable { mutableStateOf(HOME_MODE_BROWSE) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -133,7 +133,7 @@ fun HomeScreen(
     val categoryCounts = remember(countryChannels) {
         homeCategoryCounts(countryChannels)
     }
-    val currentCategory = HomeCategorySpecs.firstOrNull { it.id == selectedCategory } ?: HomeCategorySpecs[2]
+    val currentCategory = HomeCategorySpecs.firstOrNull { it.id == selectedCategory } ?: HomeCategorySpecs.first()
     val selectedCountryLabel = HomeCountryTabs.firstOrNull { it.id == selectedCountry }?.label ?: "中国"
     val visibleItems = remember(contentMode, selectedCategory, countryChannels, allChannels) {
         when (contentMode) {

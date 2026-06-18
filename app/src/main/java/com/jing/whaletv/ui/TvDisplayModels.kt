@@ -25,9 +25,9 @@ data class HomeCategorySpec(
 )
 
 val HomeCategorySpecs = listOf(
+    HomeCategorySpec("all", "全部"),
     HomeCategorySpec("cctv", "央视"),
     HomeCategorySpec("satellite", "卫视"),
-    HomeCategorySpec("all", "全部"),
     HomeCategorySpec("general", "综合"),
     HomeCategorySpec("news", "新闻"),
     HomeCategorySpec("sports", "体育"),
