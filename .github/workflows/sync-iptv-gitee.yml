@@ -12,6 +12,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       GIT_AUTHOR_NAME: whaletv-sync
       GIT_AUTHOR_EMAIL: whaletv-sync@users.noreply.github.com
@@ -39,15 +40,14 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan gitee.com >> ~/.ssh/known_hosts
 
-      - name: Mirror full upstream project to Gitee main
+      - name: Mirror latest upstream project snapshot to Gitee main
         shell: bash
         run: |
           set -euo pipefail
-          git clone "$UPSTREAM_REPO" upstream
+          git clone --depth 1 --single-branch "$UPSTREAM_REPO" upstream
           cd upstream
           git remote add gitee "$GITEE_REPO"
           git push --force gitee HEAD:main
-          git push --force gitee --tags
 
       - name: Build static Pages branch
         shell: bash
