@@ -20,8 +20,6 @@ import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.data.model.streamHealthAfterFailure
 import com.jing.whaletv.data.network.FetchResult
 import com.jing.whaletv.data.network.PlaylistClient
-import com.jing.whaletv.data.parser.EpgGuideSource
-import com.jing.whaletv.data.parser.EpgGuideSourceParser
 import com.jing.whaletv.data.parser.M3uParser
 import com.jing.whaletv.data.parser.XmltvParser
 import java.io.StringReader
@@ -49,7 +47,6 @@ class ChannelRepository(
     private val settingsRepository: SettingsRepository,
     private val m3uParser: M3uParser = M3uParser(),
     private val xmltvParser: XmltvParser = XmltvParser(),
-    private val epgGuideSourceParser: EpgGuideSourceParser = EpgGuideSourceParser(),
 ) {
     private val channelDao = database.channelDao()
     private val programDao = database.programDao()
@@ -490,35 +487,17 @@ class ChannelRepository(
         val playlistEpgUrl = syncStateDao.getValue(KEY_DISCOVERED_EPG_URL)
             ?.trim()
             ?.takeIf(::isHttpUrl)
-        val guideSources = discoverOfficialGuideSources(channelIds)
-        val selectedGuideSources = selectGuideSourcesForFetch(guideSources, EPG_GUIDE_SOURCE_FETCH_LIMIT)
-        val guideSampleChannels = guideSources
-            .map { it.channelId }
-            .distinct()
-            .take(EPG_SETTINGS_SAMPLE_CHANNEL_LIMIT)
 
-        setState(KEY_EPG_GUIDE_SOURCE_COUNT, guideSources.size.toString())
-        setState(KEY_EPG_GUIDE_SAMPLE_CHANNELS, guideSampleChannels.joinToString(",").ifBlank { null })
+        setState(KEY_EPG_GUIDE_SOURCE_COUNT, "0")
+        setState(KEY_EPG_GUIDE_SAMPLE_CHANNELS, null)
 
         val urls = buildList {
             playlistEpgUrl?.let(::add)
-            addAll(selectedGuideSources.map { it.url })
         }
             .distinct()
             .take(EPG_TOTAL_SOURCE_FETCH_LIMIT)
 
         return EpgSourceResolution(urls = urls)
-    }
-
-    private suspend fun discoverOfficialGuideSources(channelIds: Set<String>): List<EpgGuideSource> {
-        return EpgGuideSourceDiscovery(
-            fetchText = { url, etag, lastModified ->
-                playlistClient.fetchText(url = url, etag = etag, lastModified = lastModified)
-            },
-            readState = { key -> syncStateDao.getValue(key) },
-            writeState = { key, value -> setState(key, value) },
-            parser = epgGuideSourceParser,
-        ).discover(channelIds)
     }
 
     private suspend fun fetchEpgSource(url: String, useCacheHeaders: Boolean): FetchResult {

@@ -11,7 +11,7 @@
 - 设置页支持数据源、节目单、自动刷新、同步状态、维护和来源说明。
 - 默认使用 iptv-org 官方 playlist；用户可以选择优先更新范围，例如全部频道、中国频道、中文频道或新闻频道。
 - 同步流程会先更新所选优先范围，再通过 WorkManager 后台补全全部频道。
-- EPG 来源优先使用 playlist 自动发现的 `x-tvg-url`，并补充 iptv-org 官方 `guides.json` 中带直接节目单 URL 的真实来源。
+- EPG 来源只使用 playlist 自动发现的 `x-tvg-url`，不再请求 iptv-org 官方 `guides.json`。
 - 内置数据源会优先请求 Gitee raw 镜像，失败后兜底请求 iptv-org 官方源，适配电视无法访问 GitHub Pages 的网络环境。
 - Room 本地缓存频道、播放源、节目单、收藏、观看历史和同步状态。
 - OkHttp 同步支持 ETag / Last-Modified，刷新失败时继续使用旧缓存。

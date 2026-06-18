@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p pages/iptv/countries pages/iptv/languages pages/iptv/categories pages/api
+          mkdir -p pages/iptv/countries pages/iptv/languages pages/iptv/categories
 
           download() {
             local source_path="$1"
@@ -81,8 +81,6 @@ jobs:
           download "iptv/languages/jpn.m3u" "iptv/languages/jpn.m3u"
           download "iptv/languages/kor.m3u" "iptv/languages/kor.m3u"
           download "iptv/categories/news.m3u" "iptv/categories/news.m3u"
-          download "api/guides.json" "api/guides.json"
-
           cat > pages/index.html <<'HTML'
           <!doctype html>
           <html lang="zh-CN">

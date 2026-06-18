@@ -37,11 +37,12 @@ class SettingsDisplayModelTest {
     }
 
     @Test
-    fun epgGuideCandidateText_usesOfficialDirectSourceCount() {
+    fun epgGuideCandidateText_showsGuideSourcesDisabled() {
         assertEquals(
-            "2 个直接来源",
+            "guides.json 未使用",
             epgGuideCandidateText(SyncSummary(epgGuideSourceCount = 2)),
         )
+        assertEquals("guides.json 未使用", epgGuideCandidateText(SyncSummary(epgGuideSourceCount = 0)))
     }
 
     @Test
@@ -57,15 +58,15 @@ class SettingsDisplayModelTest {
     }
 
     @Test
-    fun settingsEpgSourceState_allowsGuideCandidatesWithoutPlaylistUrl() {
+    fun settingsEpgSourceState_ignoresGuideCandidatesWithoutPlaylistUrl() {
         val state = settingsEpgSourceState(
             effectiveEpgUrl = null,
             syncSummary = SyncSummary(epgGuideSourceCount = 3),
         )
 
-        assertEquals("来自 iptv-org 官方候选", state.note)
-        assertEquals("官方候选：3 个直接来源", state.value)
-        assertEquals(true, state.canTest)
+        assertEquals("尚未发现节目单地址", state.note)
+        assertEquals("playlist 暂未发现 x-tvg-url", state.value)
+        assertEquals(false, state.canTest)
     }
 
     @Test

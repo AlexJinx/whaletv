@@ -567,8 +567,8 @@ private fun EpgSettingsContent(
                     .fillMaxHeight(),
             )
             SettingsValueCard(
-                title = "官方候选",
-                description = "guides.json 直接 XML/GZIP 来源",
+                title = "节目单来源",
+                description = "只使用 playlist 自动发现",
                 value = epgGuideCandidateText(syncSummary),
                 modifier = Modifier
                     .weight(1f)
@@ -1404,7 +1404,7 @@ internal fun epgSampleChannelsText(channelIds: List<String>): String {
 }
 
 internal fun epgGuideCandidateText(syncSummary: SyncSummary): String {
-    return "${syncSummary.epgGuideSourceCount} 个直接来源"
+    return "guides.json 未使用"
 }
 
 internal data class SettingsEpgSourceState(
@@ -1415,16 +1415,10 @@ internal data class SettingsEpgSourceState(
 
 internal fun settingsEpgSourceState(effectiveEpgUrl: String?, syncSummary: SyncSummary): SettingsEpgSourceState {
     val playlistUrl = effectiveEpgUrl?.takeIf { it.isNotBlank() }
-    val guideSourceCount = syncSummary.epgGuideSourceCount
     return when {
         playlistUrl != null -> SettingsEpgSourceState(
             note = "来自 playlist 自动发现",
             value = playlistUrl,
-            canTest = true,
-        )
-        guideSourceCount > 0 -> SettingsEpgSourceState(
-            note = "来自 iptv-org 官方候选",
-            value = "官方候选：$guideSourceCount 个直接来源",
             canTest = true,
         )
         else -> SettingsEpgSourceState(

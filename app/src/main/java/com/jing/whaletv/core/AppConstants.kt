@@ -6,7 +6,6 @@ object AppConstants {
     const val APP_NAME = "鲸鱼TV"
     const val IPTV_ORG_PLAYLIST_BASE_URL = "https://iptv-org.github.io/iptv"
     const val PRIMARY_PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.m3u"
-    const val IPTV_ORG_GUIDES_API_URL = "https://iptv-org.github.io/api/guides.json"
     const val DEFAULT_REFRESH_INTERVAL_HOURS = 12
     const val HTTP_TIMEOUT_SECONDS = 12L
 
@@ -20,7 +19,6 @@ object AppConstants {
                         id = "gitee",
                         label = "Gitee raw 镜像",
                         playlistBaseUrl = "$GITEE_MIRROR_BASE_URL/iptv",
-                        guidesApiUrl = "$GITEE_MIRROR_BASE_URL/api/guides.json",
                     ),
                 )
             }
@@ -29,7 +27,6 @@ object AppConstants {
                     id = "iptv_org",
                     label = "iptv-org 官方源",
                     playlistBaseUrl = IPTV_ORG_PLAYLIST_BASE_URL,
-                    guidesApiUrl = IPTV_ORG_GUIDES_API_URL,
                 ),
             )
         }
@@ -42,18 +39,12 @@ object AppConstants {
         }
     }
 
-    fun guidesApiUrls(): List<RemoteUrl> {
-        return remoteDataSources.map { source ->
-            RemoteUrl(label = source.label, url = source.guidesApiUrl)
-        }
-    }
 }
 
 data class RemoteDataSource(
     val id: String,
     val label: String,
     val playlistBaseUrl: String,
-    val guidesApiUrl: String,
 )
 
 data class RemoteUrl(
