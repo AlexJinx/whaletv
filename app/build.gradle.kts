@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val giteeMirrorBaseUrl = providers.gradleProperty("whaletv.giteeMirrorBaseUrl")
+    .orElse("https://alexjinx.gitee.io/iptv-mirror")
+
 android {
     namespace = "com.jing.whaletv"
     compileSdk = 36
@@ -16,10 +19,12 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "WHALETV_GITEE_MIRROR_BASE_URL", "\"${giteeMirrorBaseUrl.get()}\"")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {

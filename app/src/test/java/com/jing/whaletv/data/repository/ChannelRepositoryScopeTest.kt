@@ -23,16 +23,20 @@ class ChannelRepositoryScopeTest {
     fun playlistSourcesForSync_priorityUsesSelectedScopeUrl() {
         val sources = playlistSourcesForSync(PlaylistScope.COUNTRY_CN, PlaylistSyncMode.PRIORITY)
 
-        assertEquals(1, sources.size)
-        assertEquals("https://iptv-org.github.io/iptv/countries/cn.m3u", sources.single().url)
+        assertEquals(2, sources.size)
+        assertEquals("Gitee Pages 镜像", sources[0].label)
+        assertEquals("https://alexjinx.gitee.io/iptv-mirror/iptv/countries/cn.m3u", sources[0].url)
+        assertEquals("iptv-org 官方源", sources[1].label)
+        assertEquals("https://iptv-org.github.io/iptv/countries/cn.m3u", sources[1].url)
     }
 
     @Test
     fun playlistSourcesForSync_fullBackfillAlwaysUsesAllChannelsUrl() {
         val sources = playlistSourcesForSync(PlaylistScope.COUNTRY_CN, PlaylistSyncMode.ALL_BACKFILL)
 
-        assertEquals(1, sources.size)
-        assertEquals("https://iptv-org.github.io/iptv/index.m3u", sources.single().url)
+        assertEquals(2, sources.size)
+        assertEquals("https://alexjinx.gitee.io/iptv-mirror/iptv/index.m3u", sources[0].url)
+        assertEquals("https://iptv-org.github.io/iptv/index.m3u", sources[1].url)
     }
 
     @Test

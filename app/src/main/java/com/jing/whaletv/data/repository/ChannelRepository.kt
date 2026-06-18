@@ -174,7 +174,7 @@ class ChannelRepository(
 
     suspend fun testDefaultPlaylistSource(): SettingsTestResult {
         val scope = settingsRepository.settings.first().playlistScope
-        return testPlaylistUrl(scope.playlistUrl)
+        return testPlaylistUrls(playlistSourcesForScope(scope))
     }
 
     suspend fun testActiveEpgSource(): SettingsTestResult {
@@ -191,28 +191,35 @@ class ChannelRepository(
         return testEpgUrls(sources.urls, channelIds)
     }
 
-    private suspend fun testPlaylistUrl(url: String): SettingsTestResult = withContext(Dispatchers.Default) {
-        val normalizedUrl = url.trim()
-        if (!isHttpUrl(normalizedUrl)) {
-            return@withContext SettingsTestResult(false, "请输入 http/https M3U 地址")
-        }
+    private suspend fun testPlaylistUrls(sources: List<PlaylistSource>): SettingsTestResult = withContext(Dispatchers.Default) {
+        var lastError: Throwable? = null
+        sources.forEach { source ->
+            val normalizedUrl = source.url.trim()
+            if (!isHttpUrl(normalizedUrl)) {
+                lastError = IllegalArgumentException("请输入 http/https M3U 地址")
+                return@forEach
+            }
 
-        runCatching {
-            val result = playlistClient.fetchText(url = normalizedUrl)
-            val body = (result as FetchResult.Success).body
-            val channels = m3uParser.parse(body)
-            if (channels.isEmpty()) {
-                SettingsTestResult(false, "源可访问，但没有解析到频道")
-            } else {
+            runCatching {
+                val result = playlistClient.fetchText(url = normalizedUrl)
+                val body = (result as FetchResult.Success).body
+                val channels = m3uParser.parse(body)
+                if (channels.isEmpty()) {
+                    throw IllegalStateException("源可访问，但没有解析到频道")
+                }
                 val streamCount = channels.sumOf { it.streams.size }
                 val epgHint = m3uParser.parseXmltvUrl(body)
                     ?.let { "，发现 EPG" }
                     .orEmpty()
-                SettingsTestResult(true, "源可用：${channels.size} 个频道，$streamCount 个播放源$epgHint")
+                return@withContext SettingsTestResult(
+                    true,
+                    "${source.label}可用：${channels.size} 个频道，$streamCount 个播放源$epgHint",
+                )
+            }.onFailure { error ->
+                lastError = error
             }
-        }.getOrElse { error ->
-            SettingsTestResult(false, "测试源失败：${error.userFacingMessage()}")
         }
+        SettingsTestResult(false, "测试源失败：${lastError?.userFacingMessage() ?: "没有可用源"}")
     }
 
     private suspend fun testEpgUrls(urls: List<String>, allowedChannelIds: Set<String>): SettingsTestResult = withContext(Dispatchers.Default) {
@@ -277,18 +284,31 @@ class ChannelRepository(
                 hasCachedChannels
 
             try {
+                var lastSourceError: Throwable? = null
                 sources.forEach { source ->
-                    when (val result = fetchSource(source, useCacheHeaders = useCacheHeaders)) {
-                        FetchResult.NotModified -> notModifiedCount += 1
-                        is FetchResult.Success -> {
-                            successCount += 1
-                            saveHttpCacheHeaders(source.cacheKey(), result)
-                            m3uParser.parseXmltvUrl(result.body)?.let { xmltvUrl ->
-                                setState(KEY_DISCOVERED_EPG_URL, xmltvUrl)
+                    runCatching {
+                        when (val result = fetchSource(source, useCacheHeaders = useCacheHeaders)) {
+                            FetchResult.NotModified -> notModifiedCount += 1
+                            is FetchResult.Success -> {
+                                val parsedChannels = m3uParser.parse(result.body)
+                                if (parsedChannels.isEmpty()) {
+                                    throw IllegalStateException("${source.label}没有解析到频道")
+                                }
+                                successCount += 1
+                                saveHttpCacheHeaders(source.cacheKey(), result)
+                                m3uParser.parseXmltvUrl(result.body)?.let { xmltvUrl ->
+                                    setState(KEY_DISCOVERED_EPG_URL, xmltvUrl)
+                                }
+                                parsed += parsedChannels
                             }
-                            parsed += m3uParser.parse(result.body)
                         }
+                    }.onFailure { error ->
+                        lastSourceError = error
                     }
+                }
+
+                if (successCount == 0 && notModifiedCount == 0) {
+                    throw lastSourceError ?: IllegalStateException("No playlist source succeeded")
                 }
 
                 if (parsed.isNotEmpty()) {
@@ -682,7 +702,7 @@ internal enum class MissingChannelHandling {
     MARK_UNAVAILABLE_AND_DELETE_STREAMS,
 }
 
-internal data class PlaylistSource(val key: String, val url: String) {
+internal data class PlaylistSource(val key: String, val url: String, val label: String) {
     fun cacheKey(): String = "$key.${url.hashCode().toUInt().toString(16)}"
 }
 
@@ -698,6 +718,16 @@ internal fun PlaylistScope.cacheKey(): String = "scope.$id"
 
 internal fun playlistUrlForScope(scope: PlaylistScope): String = scope.playlistUrl
 
+internal fun playlistSourcesForScope(scope: PlaylistScope): List<PlaylistSource> {
+    return AppConstants.playlistUrls(scope.playlistPath).map { remoteUrl ->
+        PlaylistSource(
+            key = scope.cacheKey(),
+            url = remoteUrl.url,
+            label = remoteUrl.label,
+        )
+    }
+}
+
 internal fun shouldBackfillAllForScope(scope: PlaylistScope): Boolean {
     return scope != PlaylistScope.ALL
 }
@@ -707,7 +737,7 @@ internal fun playlistSourcesForSync(scope: PlaylistScope, mode: PlaylistSyncMode
         PlaylistSyncMode.PRIORITY -> scope
         PlaylistSyncMode.ALL_BACKFILL -> PlaylistScope.ALL
     }
-    return listOf(PlaylistSource(sourceScope.cacheKey(), playlistUrlForScope(sourceScope)))
+    return playlistSourcesForScope(sourceScope)
 }
 
 internal fun missingChannelHandlingForSync(scope: PlaylistScope, mode: PlaylistSyncMode): MissingChannelHandling {

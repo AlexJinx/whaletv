@@ -1,0 +1,112 @@
+name: Sync IPTV mirror to Gitee
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-iptv-gitee
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GIT_AUTHOR_NAME: whaletv-sync
+      GIT_AUTHOR_EMAIL: whaletv-sync@users.noreply.github.com
+      GIT_COMMITTER_NAME: whaletv-sync
+      GIT_COMMITTER_EMAIL: whaletv-sync@users.noreply.github.com
+      GITEE_REPO: ${{ secrets.GITEE_IPTV_MIRROR_REPO }}
+      GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+      UPSTREAM_REPO: https://github.com/iptv-org/iptv.git
+      UPSTREAM_STATIC_BASE: https://iptv-org.github.io
+
+    steps:
+      - name: Validate secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GITEE_REPO"
+          test -n "$GITEE_SSH_PRIVATE_KEY"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$GITEE_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+
+      - name: Mirror full upstream project to Gitee main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone "$UPSTREAM_REPO" upstream
+          cd upstream
+          git remote add gitee "$GITEE_REPO"
+          git push --force gitee HEAD:main
+          git push --force gitee --tags
+
+      - name: Build static Pages branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pages/iptv/countries pages/iptv/languages pages/iptv/categories pages/api
+
+          download() {
+            local source_path="$1"
+            local target_path="$2"
+            curl --fail --location --silent --show-error --retry 3 --retry-delay 5 \
+              "$UPSTREAM_STATIC_BASE/$source_path" \
+              --output "pages/$target_path"
+          }
+
+          download "iptv/index.m3u" "iptv/index.m3u"
+          download "iptv/countries/cn.m3u" "iptv/countries/cn.m3u"
+          download "iptv/countries/us.m3u" "iptv/countries/us.m3u"
+          download "iptv/countries/jp.m3u" "iptv/countries/jp.m3u"
+          download "iptv/countries/uk.m3u" "iptv/countries/uk.m3u"
+          download "iptv/countries/kr.m3u" "iptv/countries/kr.m3u"
+          download "iptv/languages/zho.m3u" "iptv/languages/zho.m3u"
+          download "iptv/languages/eng.m3u" "iptv/languages/eng.m3u"
+          download "iptv/languages/jpn.m3u" "iptv/languages/jpn.m3u"
+          download "iptv/languages/kor.m3u" "iptv/languages/kor.m3u"
+          download "iptv/categories/news.m3u" "iptv/categories/news.m3u"
+          download "api/guides.json" "api/guides.json"
+
+          cat > pages/index.html <<'HTML'
+          <!doctype html>
+          <html lang="zh-CN">
+            <head>
+              <meta charset="utf-8">
+              <title>WhaleTV IPTV Mirror</title>
+            </head>
+            <body>
+              <h1>WhaleTV IPTV Mirror</h1>
+              <p>Static playlist and EPG index mirror for WhaleTV.</p>
+            </body>
+          </html>
+          HTML
+
+          cat > pages/mirror-manifest.json <<JSON
+          {
+            "source": "$UPSTREAM_STATIC_BASE",
+            "updatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          JSON
+
+      - name: Publish static files to Gitee pages branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd pages
+          git init
+          git checkout -b pages
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
+          git add .
+          git commit -m "Update WhaleTV static mirror"
+          git remote add gitee "$GITEE_REPO"
+          git push --force gitee pages:pages

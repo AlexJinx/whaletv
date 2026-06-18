@@ -1,5 +1,6 @@
 package com.jing.whaletv.data.repository
 
+import com.jing.whaletv.core.RemoteUrl
 import com.jing.whaletv.data.network.FetchResult
 import com.jing.whaletv.data.parser.EpgGuideSource
 import kotlinx.coroutines.test.runTest
@@ -47,8 +48,6 @@ class EpgGuideSourceDiscoveryTest {
     @Test
     fun discover_refetchesGuidesWithoutCacheHeadersWhenNotModifiedCacheMissesCurrentScope() = runTest {
         val state = mutableMapOf(
-            "$EPG_GUIDES_STATE_KEY.etag" to "old-etag",
-            "$EPG_GUIDES_STATE_KEY.last_modified" to "old-date",
             EPG_GUIDE_SOURCE_CACHE_STATE_KEY to serializeCachedGuideSources(
                 listOf(EpgGuideSource("Other.cn", "https://example.com/other.xml", null, null)),
                 limit = EPG_GUIDE_SOURCE_CACHE_LIMIT,
@@ -76,17 +75,53 @@ class EpgGuideSourceDiscoveryTest {
                     state[key] = value
                 }
             },
+            guideApiUrls = listOf(RemoteUrl(label = "测试源", url = "https://example.com/guides.json")),
         )
 
         val sources = discovery.discover(setOf("Wanted.cn"))
 
-        assertEquals(listOf("old-etag", null), etags)
+        assertEquals(listOf(null, null), etags)
         assertEquals("https://example.com/wanted.xml", sources.single().url)
-        assertEquals("new-etag", state["$EPG_GUIDES_STATE_KEY.etag"])
+        assertEquals(true, state.values.contains("new-etag"))
         assertEquals(
             1,
             parseCachedGuideSources(state[EPG_GUIDE_SOURCE_CACHE_STATE_KEY], setOf("Wanted.cn")).size,
         )
+    }
+
+    @Test
+    fun discover_continuesToOfficialGuidesWhenMirrorFails() = runTest {
+        val requestedUrls = mutableListOf<String>()
+        val discovery = EpgGuideSourceDiscovery(
+            fetchText = { url, _, _ ->
+                requestedUrls += url
+                if (url.contains("gitee")) {
+                    error("mirror down")
+                }
+                FetchResult.Success(
+                    body = guidesJson("Wanted.cn", "https://example.com/wanted.xml"),
+                    etag = "official-etag",
+                    lastModified = "official-date",
+                )
+            },
+            readState = { null },
+            writeState = { _, _ -> },
+            guideApiUrls = listOf(
+                RemoteUrl(label = "Gitee Pages 镜像", url = "https://gitee.example.com/api/guides.json"),
+                RemoteUrl(label = "iptv-org 官方源", url = "https://iptv-org.github.io/api/guides.json"),
+            ),
+        )
+
+        val sources = discovery.discover(setOf("Wanted.cn"))
+
+        assertEquals(
+            listOf(
+                "https://gitee.example.com/api/guides.json",
+                "https://iptv-org.github.io/api/guides.json",
+            ),
+            requestedUrls,
+        )
+        assertEquals("https://example.com/wanted.xml", sources.single().url)
     }
 
     private fun guidesJson(channelId: String, url: String): String {

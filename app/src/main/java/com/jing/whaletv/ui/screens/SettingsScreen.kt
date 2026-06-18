@@ -446,6 +446,7 @@ private fun SourceSettingsContent(
     onTestActiveEpgSource: () -> Unit,
 ) {
     val epgSourceState = settingsEpgSourceState(effectiveEpgUrl, syncSummary)
+    val primaryPlaylistSource = AppConstants.playlistUrls(playlistScope.playlistPath).first()
     SettingsCardStack {
         SettingsCardRow(height = SettingsBalancedRowHeight) {
             PlaylistScopeCard(
@@ -457,7 +458,7 @@ private fun SourceSettingsContent(
             )
             SettingsTextCard(
                 title = "数据策略",
-                description = "优先范围只使用 iptv-org 官方预设，不提供手动输入源。保存后先更新所选范围，随后自动在后台补全全部频道。",
+                description = "优先范围只使用官方预设路径，不提供手动输入源。同步时先请求 Gitee Pages 镜像，失败后自动尝试 iptv-org 官方源。",
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -466,8 +467,8 @@ private fun SourceSettingsContent(
         SettingsCardRow(height = SettingsUrlRowHeight) {
             SourceStatusCard(
                 title = "优先 playlist",
-                note = playlistScope.description,
-                url = playlistScope.playlistUrl,
+                note = "${primaryPlaylistSource.label} · ${playlistScope.description}",
+                url = primaryPlaylistSource.url,
                 enabled = true,
                 actionText = "测试源",
                 onAction = onTestDefaultPlaylistSource,
@@ -489,7 +490,7 @@ private fun SourceSettingsContent(
                     .fillMaxHeight(),
             )
         }
-        SettingsHintText("保存后先更新所选范围，随后自动在后台补全全部频道。")
+        SettingsHintText("保存后先更新所选范围，随后自动在后台补全全部频道；镜像不可用时会自动兜底官方源。")
     }
 }
 
@@ -743,8 +744,8 @@ private fun AboutSourcesContent() {
         SettingsCardRow(height = SettingsCompactRowHeight) {
             SettingsValueCard(
                 title = "iptv-org playlist",
-                description = "公开 IPTV 频道索引",
-                value = AppConstants.PRIMARY_PLAYLIST_URL,
+                description = "Gitee Pages 镜像优先，官方源兜底",
+                value = AppConstants.playlistUrls("index.m3u").joinToString(" · ") { it.url },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -768,7 +769,7 @@ private fun AboutSourcesContent() {
             )
             SettingsTextCard(
                 title = "优先更新范围",
-                description = "可以在数据源页选择官方国家、语言或分类 playlist，保存后先更新这批频道，再后台补全全部频道。",
+                description = "可以在数据源页选择国家、语言或分类 playlist。每个范围都会先访问 Gitee Pages 镜像，失败后再访问 iptv-org 官方源。",
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
