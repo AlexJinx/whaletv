@@ -62,10 +62,7 @@ class ChannelRepository(
 
     fun observeChannels(): Flow<List<TvChannel>> {
         return combine(
-            channelDao.observePlayableChannelsWithStreams(
-                healthyStatus = StreamHealth.HEALTHY.name,
-                unknownStatus = StreamHealth.UNKNOWN.name,
-            ),
+            channelDao.observeChannelsWithStreams(),
             programDao.observeAllPrograms(),
         ) { channels, programs ->
             val now = System.currentTimeMillis()

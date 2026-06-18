@@ -8,7 +8,6 @@ import com.jing.whaletv.data.model.AppSettings
 import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
-import com.jing.whaletv.data.model.isPlayable
 import com.jing.whaletv.data.model.playbackStreams
 import com.jing.whaletv.sync.SyncScheduler
 import kotlinx.coroutines.CancellationException
@@ -100,7 +99,7 @@ class MainViewModel(
     val uiState: StateFlow<HomeUiState> = uiSource
         .map { state ->
             HomeUiState(
-                channels = state.channels.filter { it.isPlayable() },
+                channels = state.channels,
                 settings = state.settings,
                 syncSummary = state.syncSummary,
                 settingsDiagnostics = state.settingsDiagnostics,

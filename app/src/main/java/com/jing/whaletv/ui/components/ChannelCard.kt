@@ -247,7 +247,11 @@ private fun ChannelMetaRow(item: ChannelCardItem) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        ChannelMetaChip(text = "可用", dotColor = WhaleTokens.Green, textColor = Color(0xFF7ACEA0))
+        if (item.sourceCount > 0) {
+            ChannelMetaChip(text = "可用", dotColor = WhaleTokens.Green, textColor = Color(0xFF7ACEA0))
+        } else {
+            ChannelMetaChip(text = "暂无可用源", dotColor = Color(0xFFE0A04E), textColor = Color(0xFFE0B875))
+        }
         ChannelMetaChip(text = "${item.sourceCount} 个源")
         if (item.hasEpg) {
             ChannelMetaChip(text = "EPG", showCalendar = true)

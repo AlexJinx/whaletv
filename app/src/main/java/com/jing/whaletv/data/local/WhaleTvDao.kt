@@ -20,6 +20,13 @@ interface ChannelDao {
         unknownStatus: String,
     ): Flow<List<ChannelWithStreams>>
 
+    @Transaction
+    @Query(
+        "SELECT * FROM channels WHERE id IN (SELECT DISTINCT channelId FROM streams) " +
+            "ORDER BY priority ASC, name ASC",
+    )
+    fun observeChannelsWithStreams(): Flow<List<ChannelWithStreams>>
+
     @Query("SELECT * FROM channels")
     suspend fun getAllChannels(): List<ChannelEntity>
 
