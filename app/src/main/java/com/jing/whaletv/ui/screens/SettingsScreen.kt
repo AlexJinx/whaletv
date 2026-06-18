@@ -458,7 +458,7 @@ private fun SourceSettingsContent(
             )
             SettingsTextCard(
                 title = "数据策略",
-                description = "优先范围只使用官方预设路径，不提供手动输入源。同步时先请求 Gitee Pages 镜像，失败后自动尝试 iptv-org 官方源。",
+                description = "优先范围只使用官方预设路径，不提供手动输入源。同步时先请求 Gitee raw 镜像，失败后自动尝试 iptv-org 官方源。",
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -744,7 +744,7 @@ private fun AboutSourcesContent() {
         SettingsCardRow(height = SettingsCompactRowHeight) {
             SettingsValueCard(
                 title = "iptv-org playlist",
-                description = "Gitee Pages 镜像优先，官方源兜底",
+                description = "Gitee raw 镜像优先，官方源兜底",
                 value = AppConstants.playlistUrls("index.m3u").joinToString(" · ") { it.url },
                 modifier = Modifier
                     .weight(1f)
@@ -769,7 +769,7 @@ private fun AboutSourcesContent() {
             )
             SettingsTextCard(
                 title = "优先更新范围",
-                description = "可以在数据源页选择国家、语言或分类 playlist。每个范围都会先访问 Gitee Pages 镜像，失败后再访问 iptv-org 官方源。",
+                description = "可以在数据源页选择国家、语言或分类 playlist。每个范围都会先访问 Gitee raw 镜像，失败后再访问 iptv-org 官方源。",
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),

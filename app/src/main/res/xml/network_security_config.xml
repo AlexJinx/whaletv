@@ -5,7 +5,7 @@
     <base-config cleartextTrafficPermitted="true" />
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">iptv-org.github.io</domain>
-        <domain includeSubdomains="true">gitee.io</domain>
+        <domain includeSubdomains="true">gitee.com</domain>
     </domain-config>
     <!-- Add additional HTTP playlist/EPG hosts here if needed -->
     <domain-config cleartextTrafficPermitted="true">

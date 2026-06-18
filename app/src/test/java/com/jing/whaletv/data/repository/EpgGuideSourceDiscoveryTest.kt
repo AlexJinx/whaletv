@@ -107,7 +107,7 @@ class EpgGuideSourceDiscoveryTest {
             readState = { null },
             writeState = { _, _ -> },
             guideApiUrls = listOf(
-                RemoteUrl(label = "Gitee Pages 镜像", url = "https://gitee.example.com/api/guides.json"),
+                RemoteUrl(label = "Gitee raw 镜像", url = "https://gitee.example.com/api/guides.json"),
                 RemoteUrl(label = "iptv-org 官方源", url = "https://iptv-org.github.io/api/guides.json"),
             ),
         )

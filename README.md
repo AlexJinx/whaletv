@@ -12,7 +12,7 @@
 - 默认使用 iptv-org 官方 playlist；用户可以选择优先更新范围，例如全部频道、中国频道、中文频道或新闻频道。
 - 同步流程会先更新所选优先范围，再通过 WorkManager 后台补全全部频道。
 - EPG 来源优先使用 playlist 自动发现的 `x-tvg-url`，并补充 iptv-org 官方 `guides.json` 中带直接节目单 URL 的真实来源。
-- 内置数据源会优先请求 Gitee Pages 镜像，失败后兜底请求 iptv-org 官方源，适配电视无法访问 GitHub Pages 的网络环境。
+- 内置数据源会优先请求 Gitee raw 镜像，失败后兜底请求 iptv-org 官方源，适配电视无法访问 GitHub Pages 的网络环境。
 - Room 本地缓存频道、播放源、节目单、收藏、观看历史和同步状态。
 - OkHttp 同步支持 ETag / Last-Modified，刷新失败时继续使用旧缓存。
 
@@ -25,16 +25,16 @@
 - `GITEE_IPTV_MIRROR_REPO`：Gitee 镜像仓库 SSH 地址，例如 `git@gitee.com:AlexJinx/iptv-mirror.git`。
 - `GITEE_SSH_PRIVATE_KEY`：可推送该 Gitee 仓库的 SSH 私钥。
 
-Gitee 仓库开启 Pages 后，默认 App 镜像地址为：
+默认 App 镜像地址直接使用 Gitee `pages` 分支的 raw 路径：
 
 ```text
-https://alexjinx.gitee.io/iptv-mirror
+https://gitee.com/AlexJinx/iptv-mirror/raw/pages
 ```
 
-如果实际 Gitee Pages 地址不同，可在构建时覆盖：
+如果后续改成自有静态站点或其他托管地址，可在构建时覆盖：
 
 ```powershell
-.\gradlew.bat assembleDebug -Pwhaletv.giteeMirrorBaseUrl=https://你的用户名.gitee.io/iptv-mirror
+.\gradlew.bat assembleDebug -Pwhaletv.giteeMirrorBaseUrl=https://你的静态域名/iptv-mirror
 ```
 
 ## 设计源

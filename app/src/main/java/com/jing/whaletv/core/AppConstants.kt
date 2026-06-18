@@ -18,7 +18,7 @@ object AppConstants {
                 add(
                     RemoteDataSource(
                         id = "gitee",
-                        label = "Gitee Pages 镜像",
+                        label = "Gitee raw 镜像",
                         playlistBaseUrl = "$GITEE_MIRROR_BASE_URL/iptv",
                         guidesApiUrl = "$GITEE_MIRROR_BASE_URL/api/guides.json",
                     ),

@@ -5,7 +5,7 @@ plugins {
 }
 
 val giteeMirrorBaseUrl = providers.gradleProperty("whaletv.giteeMirrorBaseUrl")
-    .orElse("https://alexjinx.gitee.io/iptv-mirror")
+    .orElse("https://gitee.com/AlexJinx/iptv-mirror/raw/pages")
 
 android {
     namespace = "com.jing.whaletv"
