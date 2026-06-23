@@ -60,6 +60,7 @@ design/WhaleTV Android TV Homepage/
 ```powershell
 .\gradlew.bat test
 .\gradlew.bat assembleDebug
+.\gradlew.bat assembleRelease
 .\gradlew.bat lintDebug
 ```
 
@@ -67,6 +68,12 @@ Debug APK 输出路径：
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
+```
+
+Release APK 输出路径：
+
+```text
+app/build/outputs/apk/release/app-release.apk
 ```
 
 安装到已连接的 Android TV / 盒子：

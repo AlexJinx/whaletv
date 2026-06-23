@@ -1,8 +1,34 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.isFile) {
+        file.inputStream().use(::load)
+    }
+}
+
+fun releaseSecret(name: String): String? {
+    return providers.gradleProperty(name).orNull
+        ?: System.getenv(name.replace('.', '_').uppercase().replace('-', '_'))
+        ?: localProperties.getProperty(name)
+}
+
+val releaseStoreFile = releaseSecret("whaletv.release.storeFile")
+val releaseStorePassword = releaseSecret("whaletv.release.storePassword")
+val releaseKeyAlias = releaseSecret("whaletv.release.keyAlias")
+val releaseKeyPassword = releaseSecret("whaletv.release.keyPassword")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 val giteeMirrorBaseUrl = providers.gradleProperty("whaletv.giteeMirrorBaseUrl")
     .orElse("https://gitee.com/AlexJinx/iptv-mirror/raw/pages")
@@ -15,8 +41,8 @@ android {
         applicationId = "com.jing.whaletv"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "WHALETV_GITEE_MIRROR_BASE_URL", "\"${giteeMirrorBaseUrl.get()}\"")
@@ -32,12 +58,26 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

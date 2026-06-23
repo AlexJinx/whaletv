@@ -286,10 +286,6 @@ class MainViewModel(
         }
     }
 
-    fun showUnavailableFeature(name: String) {
-        showMessage("$name 功能开发中")
-    }
-
     private fun syncIfCacheEmpty() {
         viewModelScope.launch {
             if (container.channelRepository.hasCachedPlayableChannels()) return@launch

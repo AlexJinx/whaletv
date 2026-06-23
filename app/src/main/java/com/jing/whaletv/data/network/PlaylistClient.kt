@@ -22,7 +22,7 @@ class PlaylistClient(
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/x-mpegURL,text/plain,application/xml,text/xml,*/*")
-            .header("User-Agent", "WhaleTV/1.0 AndroidTV")
+            .header("User-Agent", AppConstants.DEFAULT_USER_AGENT)
             .apply {
                 if (!etag.isNullOrBlank()) header("If-None-Match", etag)
                 if (!lastModified.isNullOrBlank()) header("If-Modified-Since", lastModified)

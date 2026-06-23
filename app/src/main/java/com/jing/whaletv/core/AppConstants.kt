@@ -8,6 +8,7 @@ object AppConstants {
     const val PRIMARY_PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.m3u"
     const val DEFAULT_REFRESH_INTERVAL_HOURS = 12
     const val HTTP_TIMEOUT_SECONDS = 12L
+    const val DEFAULT_USER_AGENT = "WhaleTV/1.1 AndroidTV"
 
     val GITEE_MIRROR_BASE_URL: String = BuildConfig.WHALETV_GITEE_MIRROR_BASE_URL.trimEnd('/')
 

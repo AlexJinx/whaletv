@@ -76,6 +76,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.ui.PlayerView
+import com.jing.whaletv.core.AppConstants
 import com.jing.whaletv.data.model.Program
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
@@ -288,7 +289,7 @@ private fun buildMediaSource(context: Context, stream: TvStream): MediaSource {
     val requestHeaders = mutableMapOf<String, String>()
     stream.referrer?.takeIf { it.isNotBlank() }?.let { requestHeaders["Referer"] = it }
     val dataSourceFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent(stream.userAgent?.takeIf { it.isNotBlank() } ?: "WhaleTV/1.0 AndroidTV")
+        .setUserAgent(stream.userAgent?.takeIf { it.isNotBlank() } ?: AppConstants.DEFAULT_USER_AGENT)
         .setDefaultRequestProperties(requestHeaders)
     return DefaultMediaSourceFactory(context)
         .setDataSourceFactory(dataSourceFactory)

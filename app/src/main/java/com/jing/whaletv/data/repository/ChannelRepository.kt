@@ -465,7 +465,7 @@ class ChannelRepository(
             .url(stream.url)
             .get()
             .header("Range", "bytes=0-0")
-            .header("User-Agent", stream.userAgent ?: "WhaleTV/1.0 AndroidTV")
+            .header("User-Agent", stream.userAgent ?: AppConstants.DEFAULT_USER_AGENT)
         stream.referrer?.takeIf { it.isNotBlank() }?.let { requestBuilder.header("Referer", it) }
         return requestBuilder.build()
     }
