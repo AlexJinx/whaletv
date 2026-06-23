@@ -29,6 +29,82 @@ class TvDisplayModelsTest {
     }
 
     @Test
+    fun homeCountryDoesNotMatchShortCodesInsideWords() {
+        val channel = channel(id = "MusicPlus", name = "Music Plus", group = "Music")
+
+        assertEquals("other", channel.homeCountryId())
+    }
+
+    @Test
+    fun homeCountryEntriesCountSyncedCountries() {
+        val channels = listOf(
+            channel(id = "CCTV1.cn", name = "CCTV-1"),
+            channel(id = "CCTV2.cn", name = "CCTV-2"),
+            channel(id = "News.us", name = "US News"),
+            channel(id = "Arte.fr", name = "Arte"),
+        )
+
+        val entries = homeCountryEntries(channels).associateBy { it.id }
+
+        assertEquals(2, entries.getValue("cn").channelCount)
+        assertEquals(1, entries.getValue("us").channelCount)
+        assertEquals(1, entries.getValue("fr").channelCount)
+        assertEquals("法国", entries.getValue("fr").label)
+    }
+
+    @Test
+    fun homeCountryTabsKeepChinaLockedAndNormalizeLimit() {
+        val ids = listOf("us", "cn", "jp", "us") + (1..30).map { "x$it" }
+        val normalized = normalizeHomeCountryTabIds(ids)
+
+        assertEquals("cn", normalized.first())
+        assertEquals(MAX_HOME_COUNTRY_TABS, normalized.size)
+        assertEquals(1, normalized.count { it == "us" })
+    }
+
+    @Test
+    fun defaultHomeCountryTabsIncludeLockedChina() {
+        val tabs = homeCountryTabsForIds(HomeCountryTabs.map { it.id }, emptyList())
+
+        assertEquals("cn", tabs.first().id)
+        assertTrue(tabs.first().locked)
+        assertEquals("中国", tabs.first().label)
+    }
+
+    @Test
+    fun addableHomeCountryEntriesSearchesOnlyHiddenCountries() {
+        val entries = listOf(
+            CountryEntry("cn", "中国", 2, locked = true),
+            CountryEntry("us", "美国", 1),
+            CountryEntry("fr", "法国", 1),
+            CountryEntry("de", "德国", 1),
+        )
+
+        val result = addableHomeCountryEntries(entries, visibleIds = listOf("cn", "us"), query = "法")
+
+        assertEquals(listOf("fr"), result.map { it.id })
+    }
+
+    @Test
+    fun addHomeCountryTabStopsAtMax() {
+        val full = normalizeHomeCountryTabIds(listOf("cn") + (1 until MAX_HOME_COUNTRY_TABS).map { "x$it" })
+
+        assertEquals(MAX_HOME_COUNTRY_TABS, addHomeCountryTab(full, "fr").size)
+        assertFalse(addHomeCountryTab(full, "fr").contains("fr"))
+    }
+
+    @Test
+    fun countryEditorRulesKeepChinaLocked() {
+        val ids = listOf("cn", "us", "jp", "uk")
+
+        assertEquals(ids, removeHomeCountryTab(ids, "cn"))
+        assertEquals(ids, moveHomeCountryTab(ids, "cn", 1))
+        assertEquals(ids, moveHomeCountryTab(ids, "us", -1))
+        assertEquals(listOf("cn", "jp", "us", "uk"), moveHomeCountryTab(ids, "us", 1))
+        assertEquals(listOf("cn", "jp", "uk"), removeHomeCountryTab(ids, "us"))
+    }
+
+    @Test
     fun homeCategoryUsesOfficialGroupTitleBuckets() {
         val channels = listOf(
             channel(id = "1.cn", group = "General"),
@@ -45,6 +121,34 @@ class TvDisplayModelsTest {
         assertEquals("uncategorized", channels[4].homeCategoryId())
         assertEquals(1, homeChannelsForCategory("news", channels).size)
         assertEquals(5, homeChannelsForCategory("all", channels).size)
+    }
+
+    @Test
+    fun homeCategorySpecsOnlyShowCctvAndSatelliteForChina() {
+        val chinaCategoryIds = homeCategorySpecsForCountry("cn").map { it.id }
+
+        assertTrue(chinaCategoryIds.contains("cctv"))
+        assertTrue(chinaCategoryIds.contains("satellite"))
+
+        listOf("us", "jp", "uk", "kr").forEach { countryId ->
+            val categoryIds = homeCategorySpecsForCountry(countryId).map { it.id }
+
+            assertFalse(categoryIds.contains("cctv"))
+            assertFalse(categoryIds.contains("satellite"))
+            assertTrue(categoryIds.contains("all"))
+            assertTrue(categoryIds.contains("general"))
+            assertTrue(categoryIds.contains("news"))
+            assertTrue(categoryIds.contains("uncategorized"))
+        }
+    }
+
+    @Test
+    fun homeCategoryNormalizationFallsBackWhenCountryHidesCategory() {
+        assertEquals("cctv", normalizeHomeCategoryIdForCountry("cn", "cctv"))
+        assertEquals("satellite", normalizeHomeCategoryIdForCountry("cn", "satellite"))
+        assertEquals("all", normalizeHomeCategoryIdForCountry("us", "cctv"))
+        assertEquals("all", normalizeHomeCategoryIdForCountry("jp", "satellite"))
+        assertEquals("news", normalizeHomeCategoryIdForCountry("kr", "news"))
     }
 
     @Test
@@ -102,6 +206,64 @@ class TvDisplayModelsTest {
     }
 
     @Test
+    fun homePlaybackSortRankPrefersHealthyThenUnknownThenUnavailable() {
+        val healthy = channel(id = "healthy.cn", streams = listOf(stream("healthy.cn", "https://example.com/live.m3u8", StreamHealth.HEALTHY)))
+        val unknown = channel(id = "unknown.cn", streams = listOf(stream("unknown.cn", "https://example.com/live.m3u8", StreamHealth.UNKNOWN)))
+        val unhealthy = channel(id = "unhealthy.cn", streams = listOf(stream("unhealthy.cn", "https://example.com/live.m3u8", StreamHealth.UNHEALTHY)))
+        val unsupported = channel(id = "unsupported.cn", streams = listOf(stream("unsupported.cn", "ftp://example.com/live.ts", StreamHealth.HEALTHY)))
+        val empty = channel(id = "empty.cn", streams = emptyList())
+
+        assertEquals(0, healthy.homePlaybackSortRank())
+        assertEquals(1, unknown.homePlaybackSortRank())
+        assertEquals(2, unhealthy.homePlaybackSortRank())
+        assertEquals(2, unsupported.homePlaybackSortRank())
+        assertEquals(2, empty.homePlaybackSortRank())
+    }
+
+    @Test
+    fun homeBrowseComparatorSortsByPlaybackHealthBeforeExistingOrder() {
+        val unhealthy = channel(id = "a.cn", name = "A 频道", priority = 0, health = StreamHealth.UNHEALTHY)
+        val unknown = channel(id = "b.cn", name = "B 频道", priority = 0, health = StreamHealth.UNKNOWN)
+        val healthy = channel(id = "c.cn", name = "C 频道", priority = 99, health = StreamHealth.HEALTHY)
+
+        val sorted = listOf(unhealthy, unknown, healthy).sortedWith(homeBrowseChannelComparator())
+
+        assertEquals(listOf(healthy, unknown, unhealthy), sorted)
+    }
+
+    @Test
+    fun homeBrowseComparatorKeepsExistingPriorityInsideSamePlaybackGroup() {
+        val laterPriority = channel(id = "later.cn", name = "A 频道", priority = 2, health = StreamHealth.HEALTHY)
+        val earlierPriority = channel(id = "earlier.cn", name = "B 频道", priority = 1, health = StreamHealth.HEALTHY)
+
+        val sorted = listOf(laterPriority, earlierPriority).sortedWith(homeBrowseChannelComparator())
+
+        assertEquals(listOf(earlierPriority, laterPriority), sorted)
+    }
+
+    @Test
+    fun homeCctvComparatorKeepsNumberOrderAndUsesPlaybackInsideSameNumber() {
+        val cctv2Healthy = channel(id = "CCTV2.cn", name = "CCTV-2", health = StreamHealth.HEALTHY)
+        val cctv1Unknown = channel(id = "CCTV1Unknown.cn", name = "CCTV-1 Alpha", health = StreamHealth.UNKNOWN)
+        val cctv1Healthy = channel(id = "CCTV1Healthy.cn", name = "CCTV-1 Beta", health = StreamHealth.HEALTHY)
+
+        val sorted = listOf(cctv2Healthy, cctv1Unknown, cctv1Healthy).sortedWith(homeCctvChannelComparator())
+
+        assertEquals(listOf(cctv1Healthy, cctv1Unknown, cctv2Healthy), sorted)
+    }
+
+    @Test
+    fun homeSatelliteComparatorKeepsNameOrderAndUsesPlaybackInsideSameName() {
+        val betaHealthy = channel(id = "BetaSatelliteTV.cn", name = "Beta 卫视", health = StreamHealth.HEALTHY)
+        val alphaUnknown = channel(id = "AlphaUnknown.cn", name = "Alpha 卫视", health = StreamHealth.UNKNOWN)
+        val alphaHealthy = channel(id = "AlphaHealthy.cn", name = "Alpha 卫视", health = StreamHealth.HEALTHY)
+
+        val sorted = listOf(betaHealthy, alphaUnknown, alphaHealthy).sortedWith(homeSatelliteChannelComparator())
+
+        assertEquals(listOf(alphaHealthy, alphaUnknown, betaHealthy), sorted)
+    }
+
+    @Test
     fun homeQualityLabelPrefers4kThenHd() {
         val fourK = channel(id = "A.cn", streams = listOf(stream("A.cn", "a", quality = "4K"), stream("A.cn", "b", quality = "720p")))
         val hd = channel(id = "B.cn", streams = listOf(stream("B.cn", "a", quality = "1080p")))
@@ -140,6 +302,7 @@ class TvDisplayModelsTest {
         id: String,
         name: String = "测试频道",
         group: String = "General",
+        priority: Int = 0,
         favorite: Boolean = false,
         watchedAt: Long? = null,
         health: StreamHealth = StreamHealth.UNKNOWN,
@@ -153,7 +316,7 @@ class TvDisplayModelsTest {
             name = name,
             logoUrl = null,
             groupTitle = group,
-            priority = 0,
+            priority = priority,
             isFavorite = favorite,
             lastWatchedAt = watchedAt,
             isAvailable = true,
