@@ -50,6 +50,16 @@ fun WhaleTvRoot(viewModel: MainViewModel) {
             onBack = viewModel::closeSearch,
             onChannelSelected = viewModel::playChannel,
         )
+    } else if (state.isCountryEditorOpen) {
+        CountryEditorScreen(
+            channels = state.channels,
+            visibleCountryIds = state.countryTabs.map { it.id },
+            syncSummary = state.syncSummary,
+            isRefreshing = state.isRefreshing,
+            message = state.message,
+            onBack = viewModel::closeCountryEditor,
+            onSave = viewModel::saveCountryTabs,
+        )
     } else {
         HomeScreen(
             state = state,
@@ -57,7 +67,7 @@ fun WhaleTvRoot(viewModel: MainViewModel) {
             onChannelSelected = viewModel::playChannel,
             onSearch = viewModel::openSearch,
             onSettings = viewModel::openSettings,
-            onUnavailableFeature = viewModel::showUnavailableFeature,
+            onEditCountries = viewModel::openCountryEditor,
         )
     }
 }

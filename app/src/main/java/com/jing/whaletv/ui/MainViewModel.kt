@@ -27,6 +27,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 data class HomeUiState(
     val channels: List<TvChannel> = emptyList(),
+    val countryTabs: List<HomeCountryTabSpec> = HomeCountryTabs,
     val settings: AppSettings = AppSettings(),
     val syncSummary: SyncSummary = SyncSummary(),
     val settingsDiagnostics: SettingsDiagnostics = SettingsDiagnostics(),
@@ -36,6 +37,7 @@ data class HomeUiState(
     val playingChannelId: String? = null,
     val isSettingsOpen: Boolean = false,
     val isSearchOpen: Boolean = false,
+    val isCountryEditorOpen: Boolean = false,
 )
 
 private data class UiPartialState(
@@ -43,11 +45,13 @@ private data class UiPartialState(
     val settings: AppSettings,
     val syncSummary: SyncSummary,
     val settingsDiagnostics: SettingsDiagnostics,
+    val countryTabIds: List<String> = HomeCountryTabs.map { it.id },
     val isRefreshing: Boolean = false,
     val message: String? = null,
     val playingChannelId: String? = null,
     val isSettingsOpen: Boolean = false,
     val isSearchOpen: Boolean = false,
+    val isCountryEditorOpen: Boolean = false,
 )
 
 class MainViewModel(
@@ -58,6 +62,8 @@ class MainViewModel(
     private val playingChannelId = MutableStateFlow<String?>(null)
     private val isSettingsOpen = MutableStateFlow(false)
     private val isSearchOpen = MutableStateFlow(false)
+    private val isCountryEditorOpen = MutableStateFlow(false)
+    private val countryTabIds = MutableStateFlow(HomeCountryTabs.map { it.id })
     private val syncMutex = Mutex()
 
     private val uiSource: StateFlow<UiPartialState> = combine(
@@ -85,6 +91,10 @@ class MainViewModel(
         base.copy(isSettingsOpen = settingsOpen)
     }.combine(isSearchOpen) { base, searchOpen ->
         base.copy(isSearchOpen = searchOpen)
+    }.combine(isCountryEditorOpen) { base, countryEditorOpen ->
+        base.copy(isCountryEditorOpen = countryEditorOpen)
+    }.combine(countryTabIds) { base, ids ->
+        base.copy(countryTabIds = ids)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -93,6 +103,7 @@ class MainViewModel(
             settings = AppSettings(),
             syncSummary = SyncSummary(),
             settingsDiagnostics = SettingsDiagnostics(),
+            countryTabIds = HomeCountryTabs.map { it.id },
         ),
     )
 
@@ -100,6 +111,7 @@ class MainViewModel(
         .map { state ->
             HomeUiState(
                 channels = state.channels,
+                countryTabs = homeCountryTabsForIds(state.countryTabIds, state.channels),
                 settings = state.settings,
                 syncSummary = state.syncSummary,
                 settingsDiagnostics = state.settingsDiagnostics,
@@ -109,6 +121,7 @@ class MainViewModel(
                 playingChannelId = state.playingChannelId,
                 isSettingsOpen = state.isSettingsOpen,
                 isSearchOpen = state.isSearchOpen,
+                isCountryEditorOpen = state.isCountryEditorOpen,
             )
         }
         .flowOn(Dispatchers.Default)
@@ -149,6 +162,7 @@ class MainViewModel(
 
     fun openSettings() {
         isSearchOpen.value = false
+        isCountryEditorOpen.value = false
         isSettingsOpen.value = true
     }
 
@@ -158,11 +172,28 @@ class MainViewModel(
 
     fun openSearch() {
         isSettingsOpen.value = false
+        isCountryEditorOpen.value = false
         isSearchOpen.value = true
     }
 
     fun closeSearch() {
         isSearchOpen.value = false
+    }
+
+    fun openCountryEditor() {
+        isSettingsOpen.value = false
+        isSearchOpen.value = false
+        isCountryEditorOpen.value = true
+    }
+
+    fun closeCountryEditor() {
+        isCountryEditorOpen.value = false
+    }
+
+    fun saveCountryTabs(countryIds: List<String>) {
+        countryTabIds.value = normalizeHomeCountryTabIds(countryIds)
+        isCountryEditorOpen.value = false
+        showMessage("国家入口已更新")
     }
 
     fun refreshSettingsNow() {

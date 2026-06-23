@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -69,26 +70,31 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jing.whaletv.R
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.ui.ChannelCardItem
 import com.jing.whaletv.ui.HomeCategorySpec
-import com.jing.whaletv.ui.HomeCategorySpecs
 import com.jing.whaletv.ui.HomeCountryTabSpec
-import com.jing.whaletv.ui.HomeCountryTabs
 import com.jing.whaletv.ui.HomeUiState
 import com.jing.whaletv.ui.cctvSortKey
+import com.jing.whaletv.ui.homeBrowseChannelComparator
 import com.jing.whaletv.ui.homeCategoryId
+import com.jing.whaletv.ui.homeCategorySpecsForCountry
+import com.jing.whaletv.ui.homeCctvChannelComparator
 import com.jing.whaletv.ui.homeChannelsForCategory
 import com.jing.whaletv.ui.homeCountryId
 import com.jing.whaletv.ui.homeFavoriteChannels
 import com.jing.whaletv.ui.homeDesignRank
 import com.jing.whaletv.ui.homeHistoryChannels
+import com.jing.whaletv.ui.homeSatelliteChannelComparator
+import com.jing.whaletv.ui.normalizeHomeCategoryIdForCountry
 import com.jing.whaletv.ui.toChannelCardItem
 import com.jing.whaletv.ui.components.HomeChannelCard
 import com.jing.whaletv.ui.components.tvRemoteClick
@@ -97,7 +103,6 @@ import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 private const val HOME_MODE_BROWSE = "browse"
 private const val HOME_MODE_FAVORITES = "favorites"
@@ -112,7 +117,7 @@ fun HomeScreen(
     onChannelSelected: (String) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
-    onUnavailableFeature: (String) -> Unit,
+    onEditCountries: () -> Unit,
 ) {
     var selectedCountry by rememberSaveable { mutableStateOf("cn") }
     var selectedCategory by rememberSaveable { mutableStateOf("all") }
@@ -130,16 +135,31 @@ fun HomeScreen(
     val countryChannels = remember(allChannels, selectedCountry) {
         allChannels.filter { it.homeCountryId() == selectedCountry }
     }
-    val categoryCounts = remember(countryChannels) {
-        homeCategoryCounts(countryChannels)
+    val visibleCategorySpecs = remember(selectedCountry) {
+        homeCategorySpecsForCountry(selectedCountry)
     }
-    val currentCategory = HomeCategorySpecs.firstOrNull { it.id == selectedCategory } ?: HomeCategorySpecs.first()
-    val selectedCountryLabel = HomeCountryTabs.firstOrNull { it.id == selectedCountry }?.label ?: "中国"
-    val visibleItems = remember(contentMode, selectedCategory, countryChannels, allChannels) {
+    val activeCategoryId = normalizeHomeCategoryIdForCountry(selectedCountry, selectedCategory)
+    val categoryCounts = remember(countryChannels, visibleCategorySpecs) {
+        homeCategoryCounts(countryChannels, visibleCategorySpecs)
+    }
+    val currentCategory = visibleCategorySpecs.firstOrNull { it.id == activeCategoryId }
+        ?: visibleCategorySpecs.first()
+    LaunchedEffect(state.countryTabs, selectedCountry) {
+        if (state.countryTabs.none { it.id == selectedCountry }) {
+            selectedCountry = state.countryTabs.firstOrNull()?.id ?: "cn"
+        }
+    }
+    LaunchedEffect(selectedCountry, selectedCategory) {
+        if (activeCategoryId != selectedCategory) {
+            selectedCategory = activeCategoryId
+        }
+    }
+    val selectedCountryLabel = state.countryTabs.firstOrNull { it.id == selectedCountry }?.label ?: "中国"
+    val visibleItems = remember(contentMode, activeCategoryId, selectedCountry, countryChannels, allChannels) {
         when (contentMode) {
             HOME_MODE_FAVORITES -> homeFavoriteChannels(allChannels).map { it.toChannelCardItem() }
             HOME_MODE_HISTORY -> homeHistoryChannels(allChannels).map { it.toChannelCardItem() }
-            else -> homeGridItemsForCategory(selectedCategory, selectedCountry, countryChannels)
+            else -> homeGridItemsForCategory(activeCategoryId, selectedCountry, countryChannels)
         }
     }
     val title = when (contentMode) {
@@ -147,11 +167,12 @@ fun HomeScreen(
         HOME_MODE_HISTORY -> "观看历史"
         else -> "$selectedCountryLabel · ${currentCategory.label}"
     }
-    val countryFocusRequesters = remember {
-        HomeCountryTabs.associate { it.id to FocusRequester() }
+    val countryFocusRequesters = remember(state.countryTabs) {
+        state.countryTabs.associate { it.id to FocusRequester() }
     }
     val selectedCountryFocusRequester = countryFocusRequesters[selectedCountry]
-        ?: countryFocusRequesters.getValue(HomeCountryTabs.first().id)
+        ?: countryFocusRequesters.values.firstOrNull()
+        ?: FocusRequester()
     val platformDensity = LocalDensity.current
 
     CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
@@ -182,9 +203,10 @@ fun HomeScreen(
                 )
             }
             CountryTabBar(
+                countries = state.countryTabs,
                 selectedCountry = selectedCountry,
                 countryFocusRequesters = countryFocusRequesters,
-                onEdit = { onUnavailableFeature("国家编辑") },
+                onEdit = onEditCountries,
                 onCountrySelected = {
                     selectedCountry = it
                     contentMode = HOME_MODE_BROWSE
@@ -192,9 +214,9 @@ fun HomeScreen(
             )
             Row(modifier = Modifier.fillMaxSize()) {
                 CategoryRail(
-                    categories = HomeCategorySpecs,
+                    categories = visibleCategorySpecs,
                     counts = categoryCounts,
-                    selectedCategory = selectedCategory,
+                    selectedCategory = activeCategoryId,
                     onCategorySelected = {
                         selectedCategory = it
                         contentMode = HOME_MODE_BROWSE
@@ -253,9 +275,15 @@ private fun GlobalTopBar(
             .padding(horizontal = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Tv, contentDescription = null, tint = WhaleTokens.Cyan, modifier = Modifier.size(28.dp))
+        Image(
+            painter = painterResource(id = R.drawable.whaletv_app_icon),
+            contentDescription = null,
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(6.dp)),
+        )
         Text(
-            text = "WhaleTV",
+            text = "鲸电视",
             color = WhaleTokens.PrimaryText,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
@@ -408,6 +436,7 @@ private fun TopBarAction(
 
 @Composable
 private fun CountryTabBar(
+    countries: List<HomeCountryTabSpec>,
     selectedCountry: String,
     countryFocusRequesters: Map<String, FocusRequester>,
     onEdit: () -> Unit,
@@ -431,7 +460,7 @@ private fun CountryTabBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        HomeCountryTabs.forEachIndexed { index, country ->
+        countries.forEachIndexed { index, country ->
             val tabFocusRequester = countryFocusRequesters.getValue(country.id)
             CountryTab(
                 country = country,
@@ -443,7 +472,7 @@ private fun CountryTabBar(
                         if (index == 0) {
                             left = FocusRequester.Cancel
                         }
-                        if (index == HomeCountryTabs.lastIndex) {
+                        if (index == countries.lastIndex) {
                             right = editFocusRequester
                         }
                     },
@@ -665,19 +694,21 @@ private fun HomeCategorySpec.icon(): ImageVector {
 }
 
 private fun List<TvChannel>.sortedForHomeBrowse(): List<TvChannel> {
-    return sortedWith(
-        compareBy<TvChannel> { it.homeDesignRank() }
-            .thenBy { it.priority }
-            .thenBy { it.name },
-    )
+    return sortedWith(homeBrowseChannelComparator())
 }
 
-private fun homeCategoryCounts(channels: List<TvChannel>): Map<String, Int> {
-    val counts = HomeCategorySpecs.associate { it.id to 0 }.toMutableMap()
+private fun homeCategoryCounts(
+    channels: List<TvChannel>,
+    categories: List<HomeCategorySpec>,
+): Map<String, Int> {
+    val counts = categories.associate { it.id to 0 }.toMutableMap()
     counts["all"] = channels.size
+    val visibleCategoryIds = categories.map { it.id }.toSet()
     channels.forEach { channel ->
         val categoryId = channel.homeCategoryId()
-        counts[categoryId] = (counts[categoryId] ?: 0) + 1
+        if (categoryId in visibleCategoryIds) {
+            counts[categoryId] = (counts[categoryId] ?: 0) + 1
+        }
     }
     return counts
 }
@@ -690,12 +721,12 @@ private fun homeGridItemsForCategory(
     val categoryChannels = homeChannelsForCategory(categoryId, countryChannels)
     if (categoryId == "cctv") {
         return categoryChannels
-            .sortedWith(compareBy<TvChannel> { it.cctvSortKey() }.thenBy { it.name.lowercase(Locale.ROOT) })
+            .sortedWith(homeCctvChannelComparator())
             .map { it.toChannelCardItem() }
     }
     if (categoryId == "satellite") {
         return categoryChannels
-            .sortedWith(compareBy<TvChannel> { it.name.lowercase(Locale.ROOT) }.thenBy { it.id.lowercase(Locale.ROOT) })
+            .sortedWith(homeSatelliteChannelComparator())
             .map { it.toChannelCardItem() }
     }
     if (categoryId != "news" || countryId != "cn") {
@@ -703,18 +734,19 @@ private fun homeGridItemsForCategory(
     }
 
     val designFeatured = listOfNotNull(
-        countryChannels.findById("cctv13.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cgtn.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("phoenixinfonewschannel.hk")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findPreferredId("cctv4asia.cn", "cctv4america.cn", "cctv4europe.cn", "cctv4k.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cctv1.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cctvplus1.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
-        countryChannels.findById("cctvplus2.cn")?.toChannelCardItem()?.withChinaNewsDesignMeta(),
+        countryChannels.findById("cctv13.cn"),
+        countryChannels.findById("cgtn.cn"),
+        countryChannels.findById("phoenixinfonewschannel.hk"),
+        countryChannels.findPreferredId("cctv4asia.cn", "cctv4america.cn", "cctv4europe.cn", "cctv4k.cn"),
+        countryChannels.findById("cctv1.cn"),
+        countryChannels.findById("cctvplus1.cn"),
+        countryChannels.findById("cctvplus2.cn"),
     )
 
-    return (designFeatured + categoryChannels.map { it.toChannelCardItem() })
-        .distinctBy { it.key }
-        .sortedWith(compareBy<ChannelCardItem> { it.rank }.thenBy { it.title })
+    return (designFeatured + categoryChannels)
+        .distinctBy { it.id }
+        .sortedForHomeBrowse()
+        .map { it.toChannelCardItem().withChinaNewsDesignMeta() }
 }
 
 private fun List<TvChannel>.findById(id: String): TvChannel? {
