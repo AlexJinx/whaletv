@@ -45,7 +45,6 @@ private data class UiPartialState(
     val settings: AppSettings,
     val syncSummary: SyncSummary,
     val settingsDiagnostics: SettingsDiagnostics,
-    val countryTabIds: List<String> = HomeCountryTabs.map { it.id },
     val isRefreshing: Boolean = false,
     val message: String? = null,
     val playingChannelId: String? = null,
@@ -63,7 +62,6 @@ class MainViewModel(
     private val isSettingsOpen = MutableStateFlow(false)
     private val isSearchOpen = MutableStateFlow(false)
     private val isCountryEditorOpen = MutableStateFlow(false)
-    private val countryTabIds = MutableStateFlow(HomeCountryTabs.map { it.id })
     private val syncMutex = Mutex()
 
     private val uiSource: StateFlow<UiPartialState> = combine(
@@ -93,8 +91,6 @@ class MainViewModel(
         base.copy(isSearchOpen = searchOpen)
     }.combine(isCountryEditorOpen) { base, countryEditorOpen ->
         base.copy(isCountryEditorOpen = countryEditorOpen)
-    }.combine(countryTabIds) { base, ids ->
-        base.copy(countryTabIds = ids)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -103,7 +99,6 @@ class MainViewModel(
             settings = AppSettings(),
             syncSummary = SyncSummary(),
             settingsDiagnostics = SettingsDiagnostics(),
-            countryTabIds = HomeCountryTabs.map { it.id },
         ),
     )
 
@@ -111,7 +106,7 @@ class MainViewModel(
         .map { state ->
             HomeUiState(
                 channels = state.channels,
-                countryTabs = homeCountryTabsForIds(state.countryTabIds, state.channels),
+                countryTabs = homeCountryTabsForIds(state.settings.homeCountryTabIds, state.channels),
                 settings = state.settings,
                 syncSummary = state.syncSummary,
                 settingsDiagnostics = state.settingsDiagnostics,
@@ -191,9 +186,19 @@ class MainViewModel(
     }
 
     fun saveCountryTabs(countryIds: List<String>) {
-        countryTabIds.value = normalizeHomeCountryTabIds(countryIds)
-        isCountryEditorOpen.value = false
-        showMessage("国家入口已更新")
+        viewModelScope.launch {
+            val saved = container.settingsRepository.saveSettings(
+                uiState.value.settings.copy(homeCountryTabIds = normalizeHomeCountryTabIds(countryIds)),
+            )
+            isCountryEditorOpen.value = false
+            showMessage(
+                if (saved.homeCountryTabIds == HomeCountryTabs.map { it.id }) {
+                    "国家入口已恢复默认"
+                } else {
+                    "国家入口已保存"
+                },
+            )
+        }
     }
 
     fun refreshSettingsNow() {

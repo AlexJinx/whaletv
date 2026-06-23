@@ -109,6 +109,7 @@ fun SettingsScreen(
         autoRefresh = autoRefresh,
         refreshIntervalHours = refreshInterval,
         playlistScope = PlaylistScope.fromId(playlistScopeId),
+        homeCountryTabIds = settings.homeCountryTabIds,
     )
     val normalizedSettings = settings.copy(
         refreshIntervalHours = SettingsRepository.normalizeRefreshIntervalHours(settings.refreshIntervalHours),

@@ -11,6 +11,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.jing.whaletv.core.AppConstants
 import com.jing.whaletv.data.model.AppSettings
 import com.jing.whaletv.data.model.PlaylistScope
+import com.jing.whaletv.ui.HomeCountryTabs
+import com.jing.whaletv.ui.normalizeHomeCountryTabIds
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -28,6 +30,9 @@ class SettingsRepository(
                 prefs[Keys.refreshIntervalHours] ?: AppConstants.DEFAULT_REFRESH_INTERVAL_HOURS,
             ),
             playlistScope = PlaylistScope.fromId(prefs[Keys.playlistScope]),
+            homeCountryTabIds = normalizeStoredHomeCountryTabIds(
+                prefs[Keys.homeCountryTabIds]?.split(",").orEmpty(),
+            ),
         )
     }
 
@@ -39,6 +44,7 @@ class SettingsRepository(
             prefs[Keys.autoRefresh] = normalized.autoRefresh
             prefs[Keys.refreshIntervalHours] = normalized.refreshIntervalHours
             prefs[Keys.playlistScope] = normalized.playlistScope.id
+            prefs[Keys.homeCountryTabIds] = normalized.homeCountryTabIds.joinToString(",")
         }
         return normalized
     }
@@ -49,6 +55,7 @@ class SettingsRepository(
         val autoRefresh = booleanPreferencesKey("auto_refresh")
         val refreshIntervalHours = intPreferencesKey("refresh_interval_hours")
         val playlistScope = stringPreferencesKey("playlist_scope")
+        val homeCountryTabIds = stringPreferencesKey("home_country_tab_ids")
     }
 
     companion object {
@@ -64,5 +71,16 @@ class SettingsRepository(
 private fun AppSettings.normalized(): AppSettings {
     return copy(
         refreshIntervalHours = SettingsRepository.normalizeRefreshIntervalHours(refreshIntervalHours),
+        homeCountryTabIds = normalizeStoredHomeCountryTabIds(homeCountryTabIds),
     )
 }
+
+private fun normalizeStoredHomeCountryTabIds(ids: List<String>): List<String> {
+    val validIds = ids
+        .map { it.trim().lowercase() }
+        .filter { it == "other" || countryIdPattern.matches(it) }
+    if (validIds.isEmpty()) return HomeCountryTabs.map { it.id }
+    return normalizeHomeCountryTabIds(validIds)
+}
+
+private val countryIdPattern = Regex("[a-z]{2}")
