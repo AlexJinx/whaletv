@@ -529,13 +529,16 @@ private fun CountryTab(
             )
         }
         if (selected) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(WhaleGradients.AccentBar),
-            )
+            // matchParentSize 让指示条跟随 tab 内容宽度，不参与测量（fillMaxWidth 会把 tab 撑满整行）
+            Box(Modifier.matchParentSize()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(WhaleGradients.AccentBar),
+                )
+            }
         }
     }
 }
