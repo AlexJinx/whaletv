@@ -9,10 +9,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.jing.whaletv.core.AppConstants
+import com.jing.whaletv.core.HomeCountryTabs
+import com.jing.whaletv.core.normalizeHomeCountryTabIds
 import com.jing.whaletv.data.model.AppSettings
 import com.jing.whaletv.data.model.PlaylistScope
-import com.jing.whaletv.ui.HomeCountryTabs
-import com.jing.whaletv.ui.normalizeHomeCountryTabIds
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -33,6 +33,7 @@ class SettingsRepository(
             homeCountryTabIds = normalizeStoredHomeCountryTabIds(
                 prefs[Keys.homeCountryTabIds]?.split(",").orEmpty(),
             ),
+            customXmltvUrl = prefs[Keys.customXmltvUrl]?.trim()?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -40,18 +41,23 @@ class SettingsRepository(
         val normalized = settings.normalized()
         dataStore.edit { prefs ->
             prefs.remove(Keys.legacyCustomPlaylistUrl)
-            prefs.remove(Keys.legacyXmltvUrl)
             prefs[Keys.autoRefresh] = normalized.autoRefresh
             prefs[Keys.refreshIntervalHours] = normalized.refreshIntervalHours
             prefs[Keys.playlistScope] = normalized.playlistScope.id
             prefs[Keys.homeCountryTabIds] = normalized.homeCountryTabIds.joinToString(",")
+            val customXmltvUrl = normalized.customXmltvUrl
+            if (customXmltvUrl != null) {
+                prefs[Keys.customXmltvUrl] = customXmltvUrl
+            } else {
+                prefs.remove(Keys.customXmltvUrl)
+            }
         }
         return normalized
     }
 
     private object Keys {
         val legacyCustomPlaylistUrl = stringPreferencesKey("custom_playlist_url")
-        val legacyXmltvUrl = stringPreferencesKey("xmltv_url")
+        val customXmltvUrl = stringPreferencesKey("xmltv_url")
         val autoRefresh = booleanPreferencesKey("auto_refresh")
         val refreshIntervalHours = intPreferencesKey("refresh_interval_hours")
         val playlistScope = stringPreferencesKey("playlist_scope")
@@ -72,6 +78,7 @@ private fun AppSettings.normalized(): AppSettings {
     return copy(
         refreshIntervalHours = SettingsRepository.normalizeRefreshIntervalHours(refreshIntervalHours),
         homeCountryTabIds = normalizeStoredHomeCountryTabIds(homeCountryTabIds),
+        customXmltvUrl = customXmltvUrl?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

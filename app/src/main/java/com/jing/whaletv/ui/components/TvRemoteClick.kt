@@ -1,5 +1,7 @@
 package com.jing.whaletv.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -18,13 +20,29 @@ fun Modifier.tvRemoteClick(
         }
         when (event.type) {
             KeyEventType.KeyDown -> {
-                onClick()
+                // 长按确认键会产生自动重复事件，只在首次按下时触发
+                if (event.nativeKeyEvent.repeatCount == 0) {
+                    onClick()
+                }
                 true
             }
             KeyEventType.KeyUp -> true
             else -> false
         }
     }
+}
+
+/**
+ * 遥控 + 触摸统一点击接线，顺序固定：tvRemoteClick → focusable → clickable。
+ * enabled=false 时保持可聚焦（避免遥控焦点断链）但不可点击。
+ */
+fun Modifier.tvClickable(
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+): Modifier {
+    return tvRemoteClick(enabled = enabled, onClick = onClick)
+        .focusable()
+        .clickable(enabled = enabled, onClick = onClick)
 }
 
 private val TvRemoteConfirmKeys = setOf(

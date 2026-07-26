@@ -86,7 +86,6 @@ fun SettingsScreen(
     diagnostics: SettingsDiagnostics,
     effectiveEpgUrl: String?,
     isRefreshing: Boolean,
-    message: String?,
     onBack: () -> Unit,
     onSave: (AppSettings) -> Unit,
     onRefreshNow: () -> Unit,

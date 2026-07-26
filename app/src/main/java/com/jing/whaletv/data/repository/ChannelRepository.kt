@@ -498,6 +498,12 @@ class ChannelRepository(
     }
 
     private suspend fun resolveEpgSources(channelIds: Set<String>): EpgSourceResolution {
+        // 用户自定义 XMLTV（如自建 iptv-org/epg 服务）优先级最高：
+        // iptv-org 官方已不托管节目单数据，guides.json 的 sources 目前全部为空。
+        val customEpgUrl = settingsRepository.settings.first().customXmltvUrl
+            ?.trim()
+            ?.takeIf(::isHttpUrl)
+
         val playlistEpgUrl = syncStateDao.getValue(KEY_DISCOVERED_EPG_URL)
             ?.trim()
             ?.takeIf(::isHttpUrl)
@@ -515,6 +521,7 @@ class ChannelRepository(
         )
 
         val urls = buildList {
+            customEpgUrl?.let(::add)
             playlistEpgUrl?.let(::add)
             selectGuideSourcesForFetch(guideSources, EPG_GUIDE_SOURCE_FETCH_LIMIT).forEach { source ->
                 add(source.url)
@@ -674,11 +681,7 @@ class ChannelRepository(
         }
         val freshIds = distinctChannels.map { it.id }
         val freshIdSet = freshIds.toSet()
-        val missingIds = if (missingChannelHandling != MissingChannelHandling.KEEP_AVAILABLE_STATE) {
-            existingChannels.keys.filterNot { it in freshIdSet }
-        } else {
-            emptyList()
-        }
+        val missingIds = existingChannels.keys.filterNot { it in freshIdSet }
 
         database.withTransaction {
             missingIds.chunked(SQLITE_BIND_PARAMETER_BATCH_SIZE).forEach { chunk ->
@@ -764,7 +767,6 @@ internal enum class PlaylistSyncMode {
 }
 
 internal enum class MissingChannelHandling {
-    KEEP_AVAILABLE_STATE,
     MARK_UNAVAILABLE,
     MARK_UNAVAILABLE_AND_DELETE_STREAMS,
 }

@@ -21,11 +21,22 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeoutOrNull
+
+/**
+ * 屏幕导航路由。播放器优先于所有覆盖层；
+ * 覆盖层（设置/搜索/国家编辑）之间互斥（结构上只存一个值）。
+ */
+sealed interface Route {
+    data object Home : Route
+    data class Player(val channelId: String) : Route
+    data object Settings : Route
+    data object Search : Route
+    data object CountryEditor : Route
+}
 
 data class HomeUiState(
     val channels: List<TvChannel> = emptyList(),
@@ -38,23 +49,15 @@ data class HomeUiState(
     val message: String? = null,
     val playingChannelId: String? = null,
     val playingSchedulePrograms: List<Program> = emptyList(),
-    val isSettingsOpen: Boolean = false,
-    val isSearchOpen: Boolean = false,
-    val isCountryEditorOpen: Boolean = false,
+    val route: Route = Route.Home,
 )
 
-private data class UiPartialState(
-    val channels: List<TvChannel>,
-    val settings: AppSettings,
-    val syncSummary: SyncSummary,
-    val settingsDiagnostics: SettingsDiagnostics,
-    val isRefreshing: Boolean = false,
-    val message: String? = null,
-    val playingChannelId: String? = null,
-    val playingSchedulePrograms: List<Program> = emptyList(),
-    val isSettingsOpen: Boolean = false,
-    val isSearchOpen: Boolean = false,
-    val isCountryEditorOpen: Boolean = false,
+private data class TransientUiState(
+    val isRefreshing: Boolean,
+    val message: String?,
+    val playingChannelId: String?,
+    val playingSchedulePrograms: List<Program>,
+    val overlayRoute: Route,
 )
 
 class MainViewModel(
@@ -64,69 +67,48 @@ class MainViewModel(
     private val message = MutableStateFlow<String?>(null)
     private val playingChannelId = MutableStateFlow<String?>(null)
     private val playingSchedulePrograms = MutableStateFlow<List<Program>>(emptyList())
-    private val isSettingsOpen = MutableStateFlow(false)
-    private val isSearchOpen = MutableStateFlow(false)
-    private val isCountryEditorOpen = MutableStateFlow(false)
+    private val overlayRoute = MutableStateFlow<Route>(Route.Home)
     private val syncMutex = Mutex()
 
-    private val uiSource: StateFlow<UiPartialState> = combine(
-        combine(
-            container.channelRepository.observeChannels(),
-            container.channelRepository.observeSyncSummary(),
-            container.settingsRepository.settings,
-            container.channelRepository.observeSettingsDiagnostics(),
-        ) { channels, syncSummary, settings, diagnostics ->
-            UiPartialState(
-                channels = channels,
-                syncSummary = syncSummary,
-                settings = settings,
-                settingsDiagnostics = diagnostics,
-            )
-        },
+    private val transientState = combine(
         isRefreshing,
-    ) { base, refreshing ->
-        base.copy(isRefreshing = refreshing)
-    }.combine(message) { base, msg ->
-        base.copy(message = msg)
-    }.combine(playingChannelId) { base, channelId ->
-        base.copy(playingChannelId = channelId)
-    }.combine(playingSchedulePrograms) { base, schedulePrograms ->
-        base.copy(playingSchedulePrograms = schedulePrograms)
-    }.combine(isSettingsOpen) { base, settingsOpen ->
-        base.copy(isSettingsOpen = settingsOpen)
-    }.combine(isSearchOpen) { base, searchOpen ->
-        base.copy(isSearchOpen = searchOpen)
-    }.combine(isCountryEditorOpen) { base, countryEditorOpen ->
-        base.copy(isCountryEditorOpen = countryEditorOpen)
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = UiPartialState(
-            channels = emptyList(),
-            settings = AppSettings(),
-            syncSummary = SyncSummary(),
-            settingsDiagnostics = SettingsDiagnostics(),
-        ),
-    )
+        message,
+        playingChannelId,
+        playingSchedulePrograms,
+        overlayRoute,
+    ) { refreshing, msg, playingId, schedulePrograms, overlay ->
+        TransientUiState(
+            isRefreshing = refreshing,
+            message = msg,
+            playingChannelId = playingId,
+            playingSchedulePrograms = schedulePrograms,
+            overlayRoute = overlay,
+        )
+    }
 
-    val uiState: StateFlow<HomeUiState> = uiSource
-        .map { state ->
-            HomeUiState(
-                channels = state.channels,
-                countryTabs = homeCountryTabsForIds(state.settings.homeCountryTabIds, state.channels),
-                settings = state.settings,
-                syncSummary = state.syncSummary,
-                settingsDiagnostics = state.settingsDiagnostics,
-                effectiveEpgUrl = effectiveEpgUrl(state.syncSummary),
-                isRefreshing = state.isRefreshing,
-                message = state.message,
-                playingChannelId = state.playingChannelId,
-                playingSchedulePrograms = state.playingSchedulePrograms,
-                isSettingsOpen = state.isSettingsOpen,
-                isSearchOpen = state.isSearchOpen,
-                isCountryEditorOpen = state.isCountryEditorOpen,
-            )
-        }
+    val uiState: StateFlow<HomeUiState> = combine(
+        container.channelRepository.observeChannels(),
+        container.channelRepository.observeSyncSummary(),
+        container.settingsRepository.settings,
+        container.channelRepository.observeSettingsDiagnostics(),
+        transientState,
+    ) { channels, syncSummary, settings, diagnostics, transient ->
+        HomeUiState(
+            channels = channels,
+            countryTabs = homeCountryTabsForIds(settings.homeCountryTabIds, channels),
+            settings = settings,
+            syncSummary = syncSummary,
+            settingsDiagnostics = diagnostics,
+            effectiveEpgUrl = settings.customXmltvUrl ?: effectiveEpgUrl(syncSummary),
+            isRefreshing = transient.isRefreshing,
+            message = transient.message,
+            playingChannelId = transient.playingChannelId,
+            playingSchedulePrograms = transient.playingSchedulePrograms,
+            route = transient.playingChannelId
+                ?.let { Route.Player(it) }
+                ?: transient.overlayRoute,
+        )
+    }
         .flowOn(Dispatchers.Default)
         .stateIn(
             scope = viewModelScope,
@@ -179,33 +161,33 @@ class MainViewModel(
     }
 
     fun openSettings() {
-        isSearchOpen.value = false
-        isCountryEditorOpen.value = false
-        isSettingsOpen.value = true
+        overlayRoute.value = Route.Settings
     }
 
     fun closeSettings() {
-        isSettingsOpen.value = false
+        if (overlayRoute.value == Route.Settings) {
+            overlayRoute.value = Route.Home
+        }
     }
 
     fun openSearch() {
-        isSettingsOpen.value = false
-        isCountryEditorOpen.value = false
-        isSearchOpen.value = true
+        overlayRoute.value = Route.Search
     }
 
     fun closeSearch() {
-        isSearchOpen.value = false
+        if (overlayRoute.value == Route.Search) {
+            overlayRoute.value = Route.Home
+        }
     }
 
     fun openCountryEditor() {
-        isSettingsOpen.value = false
-        isSearchOpen.value = false
-        isCountryEditorOpen.value = true
+        overlayRoute.value = Route.CountryEditor
     }
 
     fun closeCountryEditor() {
-        isCountryEditorOpen.value = false
+        if (overlayRoute.value == Route.CountryEditor) {
+            overlayRoute.value = Route.Home
+        }
     }
 
     fun saveCountryTabs(countryIds: List<String>) {
@@ -213,7 +195,7 @@ class MainViewModel(
             val saved = container.settingsRepository.saveSettings(
                 uiState.value.settings.copy(homeCountryTabIds = normalizeHomeCountryTabIds(countryIds)),
             )
-            isCountryEditorOpen.value = false
+            closeCountryEditor()
             showMessage(
                 if (saved.homeCountryTabIds == HomeCountryTabs.map { it.id }) {
                     "国家入口已恢复默认"

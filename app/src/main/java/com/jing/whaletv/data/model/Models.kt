@@ -61,6 +61,12 @@ data class AppSettings(
     val refreshIntervalHours: Int = 12,
     val playlistScope: PlaylistScope = PlaylistScope.ALL,
     val homeCountryTabIds: List<String> = listOf("cn", "us", "jp", "uk", "kr"),
+    /**
+     * 用户自定义 XMLTV 节目单地址（如自建 iptv-org/epg 服务）。
+     * iptv-org 官方不再托管任何节目单数据，这是获取 EPG 的主要途径；
+     * XMLTV 的频道 id 与播放清单 tvg-id 完全一致，按 id 精确匹配。
+     */
+    val customXmltvUrl: String? = null,
 )
 
 data class SettingsDiagnostics(

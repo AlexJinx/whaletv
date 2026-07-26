@@ -5,35 +5,72 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+/**
+ * 鲸鱼TV 设计令牌：全 app 颜色唯一来源。
+ * 禁止在屏幕代码里写 Color(0x...) 字面量或 Accent.copy(alpha = ...) 魔数，
+ * 需要新颜色时在这里命名。
+ */
 object WhaleTokens {
-    val Background = Color(0xFF0D0F12)
-    val BackgroundDeep = Color(0xFF050709)
-    val Sidebar = Color(0xFF151921)
-    val Surface = Color(0xFF13171F)
-    val SurfaceRaised = Color(0xFF1C2233)
-    val Muted = Color(0xFF1A2030)
-    val PrimaryText = Color(0xFFDDE4F0)
-    val SecondaryText = Color(0xFF6B7FA3)
-    val TertiaryText = Color(0xFF8899B4)
-    val Cyan = Color(0xFF00C8D4)
-    val Gold = Color(0xFFD4A017)
-    val Red = Color(0xFFE53535)
-    val Green = Color(0xFF22C55E)
-    val Border = Color(0x12FFFFFF)
-    val BorderStrong = Color(0x1FFFFFFF)
+    // ---- 背景层次（深空蓝黑） ----
+    val BackgroundTop = Color(0xFF0C1018)
+    val BackgroundBottom = Color(0xFF060810)
+    val Background = Color(0xFF0A0E15)
+    val BackgroundDeep = Color(0xFF04060A)
+    val Sidebar = Color(0xFF10141D)
+    val Surface = Color(0xFF121722)
+    val SurfaceRaised = Color(0xFF1A2130)
+    val SurfaceGlass = Color(0xE6111826)
+    val Muted = Color(0xFF171E2B)
+
+    // ---- 文字 ----
+    val TextPrimary = Color(0xFFE9EEF8)
+    val TextSecondary = Color(0xFF8B9CBB)
+    val TextTertiary = Color(0xFF64748F)
+    val TextOnAccent = Color(0xFF042028)
+
+    // ---- 品牌 / 语义 ----
+    val Accent = Color(0xFF25D0DE)
+    val AccentBright = Color(0xFF52E5F0)
+    val Gold = Color(0xFFE0B54F)
+    val Green = Color(0xFF34D399)
+    val Amber = Color(0xFFE8A94E)
+    val Red = Color(0xFFF05555)
+    val Teal = Color(0xFF5FC8B8)
+
+    // ---- 边框 ----
+    val Border = Color(0x14FFFFFF)
+    val BorderStrong = Color(0x22FFFFFF)
+
+    // ---- 焦点语义（focused / selected 四态的唯一来源） ----
+    val FocusFill = Color(0x2925D0DE)
+    val FocusBorder = Color(0xB325D0DE)
+    val FocusGlow = Color(0x5C25D0DE)
+    val SelectedFill = Color(0x1425D0DE)
+    val SelectedBorder = Color(0x4425D0DE)
+
+    // ---- 弱化元素 ----
+    val IconMuted = Color(0xFF7A8EAA)
+    val MetaText = Color(0xFF8899BB)
+    val CountDim = Color(0xFF5E7090)
+
+    // ---- 迁移期兼容别名（旧屏幕代码引用，迁移完成后删除） ----
+    val PrimaryText = TextPrimary
+    val SecondaryText = TextSecondary
+    val TertiaryText = TextTertiary
+    val Cyan = Accent
 }
 
 private val WhaleColors = darkColorScheme(
-    primary = WhaleTokens.Cyan,
-    onPrimary = WhaleTokens.Background,
+    primary = WhaleTokens.Accent,
+    onPrimary = WhaleTokens.TextOnAccent,
     secondary = WhaleTokens.Gold,
     onSecondary = Color(0xFF1D1600),
     background = WhaleTokens.Background,
-    onBackground = WhaleTokens.PrimaryText,
+    onBackground = WhaleTokens.TextPrimary,
     surface = WhaleTokens.Surface,
-    onSurface = WhaleTokens.PrimaryText,
+    onSurface = WhaleTokens.TextPrimary,
     surfaceVariant = WhaleTokens.SurfaceRaised,
-    onSurfaceVariant = WhaleTokens.SecondaryText,
+    onSurfaceVariant = WhaleTokens.TextSecondary,
     error = WhaleTokens.Red,
 )
 
