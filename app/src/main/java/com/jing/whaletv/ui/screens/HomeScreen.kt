@@ -44,7 +44,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -68,37 +67,31 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jing.whaletv.R
 import com.jing.whaletv.data.model.SyncSummary
-import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.ui.ChannelCardItem
 import com.jing.whaletv.ui.HomeCategorySpec
 import com.jing.whaletv.ui.HomeCountryTabSpec
 import com.jing.whaletv.ui.HomeUiState
-import com.jing.whaletv.ui.cctvSortKey
-import com.jing.whaletv.ui.homeBrowseChannelComparator
-import com.jing.whaletv.ui.homeCategoryId
+import com.jing.whaletv.ui.homeCategoryCounts
 import com.jing.whaletv.ui.homeCategorySpecsForCountry
-import com.jing.whaletv.ui.homeCctvChannelComparator
-import com.jing.whaletv.ui.homeChannelsForCategory
 import com.jing.whaletv.ui.homeCountryId
 import com.jing.whaletv.ui.homeFavoriteChannels
-import com.jing.whaletv.ui.homeDesignRank
+import com.jing.whaletv.ui.homeGridItemsForCategory
 import com.jing.whaletv.ui.homeHistoryChannels
-import com.jing.whaletv.ui.homeSatelliteChannelComparator
 import com.jing.whaletv.ui.normalizeHomeCategoryIdForCountry
 import com.jing.whaletv.ui.toChannelCardItem
+import com.jing.whaletv.ui.components.FlagImage
 import com.jing.whaletv.ui.components.HomeChannelCard
 import com.jing.whaletv.ui.components.TvFocusStyle
 import com.jing.whaletv.ui.components.TvFocusable
 import com.jing.whaletv.ui.components.TvIconButton
+import com.jing.whaletv.ui.components.flagResourceCode
+import com.jing.whaletv.ui.theme.WhaleGradients
 import com.jing.whaletv.ui.theme.WhaleShapes
 import com.jing.whaletv.ui.theme.WhaleTokens
 import kotlinx.coroutines.delay
@@ -161,7 +154,7 @@ fun HomeScreen(
         when (contentMode) {
             HOME_MODE_FAVORITES -> homeFavoriteChannels(allChannels).map { it.toChannelCardItem() }
             HOME_MODE_HISTORY -> homeHistoryChannels(allChannels).map { it.toChannelCardItem() }
-            else -> homeGridItemsForCategory(activeCategoryId, selectedCountry, countryChannels)
+            else -> homeGridItemsForCategory(activeCategoryId, countryChannels)
         }
     }
     val title = when (contentMode) {
@@ -176,65 +169,61 @@ fun HomeScreen(
     val selectedCountryFocusRequester = countryFocusRequesters[selectedCountry]
         ?: countryFocusRequesters.values.firstOrNull()
         ?: fallbackCountryFocusRequester
-    val platformDensity = LocalDensity.current
-
-    CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(WhaleTokens.Background),
-        ) {
-            GlobalTopBar(
-                now = now,
-                syncSummary = state.syncSummary,
-                isRefreshing = state.isRefreshing,
-                message = state.message,
-                activeMode = contentMode,
-                onSearch = onSearch,
-                onFavorites = { contentMode = HOME_MODE_FAVORITES },
-                onHistory = { contentMode = HOME_MODE_HISTORY },
-                onSettings = onSettings,
-                downFocusRequester = selectedCountryFocusRequester,
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WhaleGradients.Page),
+    ) {
+        GlobalTopBar(
+            now = now,
+            syncSummary = state.syncSummary,
+            isRefreshing = state.isRefreshing,
+            message = state.message,
+            activeMode = contentMode,
+            onSearch = onSearch,
+            onFavorites = { contentMode = HOME_MODE_FAVORITES },
+            onHistory = { contentMode = HOME_MODE_HISTORY },
+            onSettings = onSettings,
+            downFocusRequester = selectedCountryFocusRequester,
+        )
+        if (state.isRefreshing) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = WhaleTokens.Accent,
+                trackColor = WhaleTokens.Surface,
             )
-            if (state.isRefreshing) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp),
-                    color = WhaleTokens.Accent,
-                    trackColor = WhaleTokens.Surface,
-                )
-            }
-            CountryTabBar(
-                countries = state.countryTabs,
-                selectedCountry = selectedCountry,
-                countryFocusRequesters = countryFocusRequesters,
-                onEdit = onEditCountries,
-                onCountrySelected = {
-                    selectedCountry = it
+        }
+        CountryTabBar(
+            countries = state.countryTabs,
+            selectedCountry = selectedCountry,
+            countryFocusRequesters = countryFocusRequesters,
+            onEdit = onEditCountries,
+            onCountrySelected = {
+                selectedCountry = it
+                contentMode = HOME_MODE_BROWSE
+            },
+        )
+        Row(modifier = Modifier.fillMaxSize()) {
+            CategoryRail(
+                categories = visibleCategorySpecs,
+                counts = categoryCounts,
+                selectedCategory = activeCategoryId,
+                onCategorySelected = {
+                    selectedCategory = it
                     contentMode = HOME_MODE_BROWSE
                 },
             )
-            Row(modifier = Modifier.fillMaxSize()) {
-                CategoryRail(
-                    categories = visibleCategorySpecs,
-                    counts = categoryCounts,
-                    selectedCategory = activeCategoryId,
-                    onCategorySelected = {
-                        selectedCategory = it
-                        contentMode = HOME_MODE_BROWSE
-                    },
-                )
-                ChannelContent(
-                    title = title,
-                    count = visibleItems.size,
-                    lastSyncAt = state.syncSummary.playlistLastSuccessAt,
-                    isGlobalMode = contentMode != HOME_MODE_BROWSE,
-                    cardItems = visibleItems,
-                    onChannelSelected = onChannelSelected,
-                    onRefresh = onRefresh,
-                )
-            }
+            ChannelContent(
+                title = title,
+                count = visibleItems.size,
+                lastSyncAt = state.syncSummary.playlistLastSuccessAt,
+                isGlobalMode = contentMode != HOME_MODE_BROWSE,
+                cardItems = visibleItems,
+                onChannelSelected = onChannelSelected,
+                onRefresh = onRefresh,
+            )
         }
     }
 }
@@ -278,20 +267,32 @@ private fun GlobalTopBar(
             .padding(horizontal = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.whaletv_app_icon),
-            contentDescription = null,
-            modifier = Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(6.dp)),
-        )
-        Text(
-            text = "鲸电视",
-            color = WhaleTokens.TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 12.dp),
-        )
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(id = R.drawable.whaletv_app_icon),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                )
+                Text(
+                    text = "鲸电视",
+                    color = WhaleTokens.TextPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .padding(top = 3.dp)
+                    .width(44.dp)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(WhaleGradients.AccentBar),
+            )
+        }
         Spacer(Modifier.weight(1f))
         TopBarAction(
             text = "搜索",
@@ -487,6 +488,10 @@ private fun CountryTab(
         onClick = onClick,
         selected = selected,
         shape = WhaleShapes.Button,
+        style = TvFocusStyle(
+            fillSelected = Color.Transparent,
+            borderSelected = Color.Transparent,
+        ),
         modifier = modifier.height(40.dp),
     ) { focused ->
         val contentColor = if (focused || selected) WhaleTokens.Accent else WhaleTokens.IconMuted
@@ -505,11 +510,31 @@ private fun CountryTab(
                     modifier = Modifier.size(14.dp),
                 )
             }
+            // "other" 等非国家 id 不展示旗帜，仅保留文字。
+            if (flagResourceCode(country.id) != null) {
+                FlagImage(
+                    countryId = country.id,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .width(24.dp)
+                        .height(16.dp),
+                    fallbackFontSize = 9.sp,
+                )
+            }
             Text(
                 text = country.label,
                 color = contentColor,
                 fontSize = 16.sp,
                 fontWeight = if (focused || selected) FontWeight.SemiBold else FontWeight.Medium,
+            )
+        }
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(WhaleGradients.AccentBar),
             )
         }
     }
@@ -598,7 +623,7 @@ private fun CategoryRow(
                     .width(4.dp)
                     .height(28.dp)
                     .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
-                    .background(WhaleTokens.Accent),
+                    .background(WhaleGradients.AccentBar),
             )
         }
         Row(
@@ -625,6 +650,10 @@ private fun CategoryRow(
                 text = count.toString(),
                 color = if (focused || selected) WhaleTokens.Accent.copy(alpha = 0.90f) else WhaleTokens.CountDim,
                 fontSize = 14.sp,
+                modifier = Modifier
+                    .clip(WhaleShapes.Pill)
+                    .background(WhaleTokens.SurfaceRaised)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
             )
         }
     }
@@ -644,87 +673,6 @@ private fun HomeCategorySpec.icon(): ImageVector {
         "documentary" -> Icons.Default.Theaters
         "entertainment" -> Icons.Default.EmojiEmotions
         else -> Icons.Default.WifiTethering
-    }
-}
-
-private fun List<TvChannel>.sortedForHomeBrowse(): List<TvChannel> {
-    return sortedWith(homeBrowseChannelComparator())
-}
-
-private fun homeCategoryCounts(
-    channels: List<TvChannel>,
-    categories: List<HomeCategorySpec>,
-): Map<String, Int> {
-    val counts = categories.associate { it.id to 0 }.toMutableMap()
-    counts["all"] = channels.size
-    val visibleCategoryIds = categories.map { it.id }.toSet()
-    channels.forEach { channel ->
-        val categoryId = channel.homeCategoryId()
-        if (categoryId in visibleCategoryIds) {
-            counts[categoryId] = (counts[categoryId] ?: 0) + 1
-        }
-    }
-    return counts
-}
-
-private fun homeGridItemsForCategory(
-    categoryId: String,
-    countryId: String,
-    countryChannels: List<TvChannel>,
-): List<ChannelCardItem> {
-    val categoryChannels = homeChannelsForCategory(categoryId, countryChannels)
-    if (categoryId == "cctv") {
-        return categoryChannels
-            .sortedWith(homeCctvChannelComparator())
-            .map { it.toChannelCardItem() }
-    }
-    if (categoryId == "satellite") {
-        return categoryChannels
-            .sortedWith(homeSatelliteChannelComparator())
-            .map { it.toChannelCardItem() }
-    }
-    if (categoryId != "news" || countryId != "cn") {
-        return categoryChannels.sortedForHomeBrowse().map { it.toChannelCardItem() }
-    }
-
-    val designFeatured = listOfNotNull(
-        countryChannels.findById("cctv13.cn"),
-        countryChannels.findById("cgtn.cn"),
-        countryChannels.findById("phoenixinfonewschannel.hk"),
-        countryChannels.findPreferredId("cctv4asia.cn", "cctv4america.cn", "cctv4europe.cn", "cctv4k.cn"),
-        countryChannels.findById("cctv1.cn"),
-        countryChannels.findById("cctvplus1.cn"),
-        countryChannels.findById("cctvplus2.cn"),
-    )
-
-    return (designFeatured + categoryChannels)
-        .distinctBy { it.id }
-        .sortedForHomeBrowse()
-        .map { it.toChannelCardItem().withChinaNewsDesignMeta() }
-}
-
-private fun List<TvChannel>.findById(id: String): TvChannel? {
-    return firstOrNull { it.id.equals(id, ignoreCase = true) }
-}
-
-private fun List<TvChannel>.findPreferredId(vararg ids: String): TvChannel? {
-    return ids.firstNotNullOfOrNull { preferredId -> findById(preferredId) }
-}
-
-private fun ChannelCardItem.withChinaNewsDesignMeta(): ChannelCardItem {
-    return when (key.lowercase()) {
-        "cctv13.cn" -> copy(qualityLabel = "4K", sourceCount = 3)
-        "cgtn.cn" -> copy(qualityLabel = "高清", sourceCount = 2)
-        "phoenixinfonewschannel.hk" -> copy(qualityLabel = "高清", sourceCount = 4)
-        "cctv4asia.cn",
-        "cctv4america.cn",
-        "cctv4europe.cn",
-        "cctv4k.cn",
-        -> copy(qualityLabel = "高清", sourceCount = 5)
-        "cctv1.cn" -> copy(qualityLabel = "高清", sourceCount = 2)
-        "cctvplus1.cn" -> copy(qualityLabel = "高清", sourceCount = 3)
-        "cctvplus2.cn" -> copy(qualityLabel = "高清", sourceCount = 2)
-        else -> this
     }
 }
 
@@ -754,7 +702,6 @@ private fun ChannelContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(WhaleTokens.Background)
             .padding(horizontal = 28.dp, vertical = 20.dp),
     ) {
         Row(
@@ -839,12 +786,32 @@ private fun ChannelContent(
 private fun EmptyHomeState(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .clip(WhaleShapes.Item)
-            .background(WhaleTokens.Surface)
-            .border(1.dp, WhaleTokens.Border, WhaleShapes.Item),
+            .clip(WhaleShapes.Card)
+            .background(WhaleGradients.CardSurface)
+            .border(1.dp, WhaleTokens.Border, WhaleShapes.Card),
         contentAlignment = Alignment.Center,
     ) {
-        Text("暂无频道", color = WhaleTokens.TextSecondary, fontSize = 16.sp)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.Tv,
+                contentDescription = null,
+                tint = WhaleTokens.IconMuted,
+                modifier = Modifier.size(44.dp),
+            )
+            Text(
+                text = "暂无频道",
+                color = WhaleTokens.TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Text(
+                text = "稍后重试或前往设置检查数据源",
+                color = WhaleTokens.TextTertiary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
     }
 }
 

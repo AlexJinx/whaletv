@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,10 +40,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jing.whaletv.data.model.TvChannel
@@ -60,6 +58,9 @@ import com.jing.whaletv.ui.theme.WhaleShapes
 import com.jing.whaletv.ui.theme.WhaleTokens
 import com.jing.whaletv.ui.theme.WhaleType
 import com.jing.whaletv.ui.toChannelCardItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private const val SEARCH_GRID_VISIBLE_ROWS = 3
 private val SearchGridGap = 20.dp
@@ -74,34 +75,41 @@ fun SearchScreen(
     BackHandler(onBack = onBack)
 
     var query by rememberSaveable { mutableStateOf("") }
-    val resultChannels = remember(query, channels) { searchChannels(query, channels) }
-    val resultItems = remember(resultChannels) { resultChannels.map { it.toChannelCardItem() } }
-    val platformDensity = LocalDensity.current
+    var resultItems by remember { mutableStateOf<List<ChannelCardItem>>(emptyList()) }
+    // key 变化时自动取消重启，等价 150ms 防抖；空查询立即清空不延迟
+    LaunchedEffect(query, channels) {
+        if (query.isBlank()) {
+            resultItems = emptyList()
+            return@LaunchedEffect
+        }
+        delay(150)
+        resultItems = withContext(Dispatchers.Default) {
+            searchChannels(query, channels).map { it.toChannelCardItem() }
+        }
+    }
 
-    CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(WhaleTokens.Background),
-        ) {
-            SearchTopBar(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WhaleTokens.Background),
+    ) {
+        SearchTopBar(
+            query = query,
+            resultCount = resultItems.size,
+            onBack = onBack,
+        )
+        Row(modifier = Modifier.fillMaxSize()) {
+            SearchInputPanel(
                 query = query,
-                resultCount = resultItems.size,
-                onBack = onBack,
+                onAppend = { query += it },
+                onClear = { query = "" },
+                onDelete = { query = query.dropLast(1) },
             )
-            Row(modifier = Modifier.fillMaxSize()) {
-                SearchInputPanel(
-                    query = query,
-                    onAppend = { query += it },
-                    onClear = { query = "" },
-                    onDelete = { query = query.dropLast(1) },
-                )
-                SearchResultsPane(
-                    query = query,
-                    items = resultItems,
-                    onChannelSelected = onChannelSelected,
-                )
-            }
+            SearchResultsPane(
+                query = query,
+                items = resultItems,
+                onChannelSelected = onChannelSelected,
+            )
         }
     }
 }

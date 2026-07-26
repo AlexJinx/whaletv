@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -36,7 +37,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,14 +59,12 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.ViewCompat
@@ -80,12 +78,15 @@ import com.jing.whaletv.ui.MAX_HOME_COUNTRY_TABS
 import com.jing.whaletv.ui.addHomeCountryTab
 import com.jing.whaletv.ui.addableHomeCountryEntries
 import com.jing.whaletv.ui.components.FlagImage
+import com.jing.whaletv.ui.components.TvFocusStyle
+import com.jing.whaletv.ui.components.TvFocusable
 import com.jing.whaletv.ui.components.tvClickable
 import com.jing.whaletv.ui.components.tvRemoteClick
 import com.jing.whaletv.ui.homeCountryEntries
 import com.jing.whaletv.ui.moveHomeCountryTab
 import com.jing.whaletv.ui.normalizeHomeCountryTabIds
 import com.jing.whaletv.ui.removeHomeCountryTab
+import com.jing.whaletv.ui.theme.WhaleShapes
 import com.jing.whaletv.ui.theme.WhaleTokens
 import java.time.Instant
 import java.time.ZoneId
@@ -113,7 +114,6 @@ fun CountryEditorScreen(
     val initialFocusRequester = remember { FocusRequester() }
     val searchFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    val platformDensity = LocalDensity.current
 
     BackHandler(enabled = isSearchEditing) {
         keyboardController?.hide()
@@ -133,65 +133,63 @@ fun CountryEditorScreen(
     val visibleCountries = draftIds.mapNotNull { countryById[it] }
     val addableCountries = addableHomeCountryEntries(allCountries, draftIds, query)
 
-    CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WhaleTokens.Background),
+    ) {
+        CountryEditorTopBar(
+            now = now,
+            syncSummary = syncSummary,
+            isRefreshing = isRefreshing,
+            message = message,
+        )
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .background(WhaleTokens.Background),
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(start = 48.dp, top = 28.dp, end = 48.dp, bottom = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
         ) {
-            CountryEditorTopBar(
-                now = now,
-                syncSummary = syncSummary,
-                isRefreshing = isRefreshing,
-                message = message,
+            VisibleCountriesPanel(
+                countries = visibleCountries,
+                initialFocusRequester = initialFocusRequester,
+                onMoveUp = { id -> draftIds = moveHomeCountryTab(draftIds, id, -1) },
+                onMoveDown = { id -> draftIds = moveHomeCountryTab(draftIds, id, 1) },
+                onRemove = { id -> draftIds = removeHomeCountryTab(draftIds, id) },
+                modifier = Modifier.weight(1.12f),
             )
-            Row(
+            Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(start = 48.dp, top = 28.dp, end = 48.dp, bottom = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(28.dp),
-            ) {
-                VisibleCountriesPanel(
-                    countries = visibleCountries,
-                    initialFocusRequester = initialFocusRequester,
-                    onMoveUp = { id -> draftIds = moveHomeCountryTab(draftIds, id, -1) },
-                    onMoveDown = { id -> draftIds = moveHomeCountryTab(draftIds, id, 1) },
-                    onRemove = { id -> draftIds = removeHomeCountryTab(draftIds, id) },
-                    modifier = Modifier.weight(1.12f),
-                )
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .fillMaxHeight()
-                        .background(Color.White.copy(alpha = 0.11f)),
-                )
-                AddableCountriesPanel(
-                    countries = addableCountries,
-                    totalCountryCount = allCountries.size,
-                    query = query,
-                    onQueryChange = { query = it },
-                    isSearchEditing = isSearchEditing,
-                    onSearchEditingChange = { isSearchEditing = it },
-                    searchFocusRequester = searchFocusRequester,
-                    canAdd = draftIds.size < MAX_HOME_COUNTRY_TABS,
-                    onAdd = { id ->
-                        if (draftIds.size < MAX_HOME_COUNTRY_TABS) {
-                            draftIds = addHomeCountryTab(draftIds, id)
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            CountryEditorBottomBar(
-                onRestoreDefault = {
-                    draftIds = normalizeHomeCountryTabIds(HomeCountryTabs.map { it.id })
-                    query = ""
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(Color.White.copy(alpha = 0.11f)),
+            )
+            AddableCountriesPanel(
+                countries = addableCountries,
+                totalCountryCount = allCountries.size,
+                query = query,
+                onQueryChange = { query = it },
+                isSearchEditing = isSearchEditing,
+                onSearchEditingChange = { isSearchEditing = it },
+                searchFocusRequester = searchFocusRequester,
+                canAdd = draftIds.size < MAX_HOME_COUNTRY_TABS,
+                onAdd = { id ->
+                    if (draftIds.size < MAX_HOME_COUNTRY_TABS) {
+                        draftIds = addHomeCountryTab(draftIds, id)
+                    }
                 },
-                onCancel = onBack,
-                onSave = { onSave(draftIds) },
+                modifier = Modifier.weight(1f),
             )
         }
+        CountryEditorBottomBar(
+            onRestoreDefault = {
+                draftIds = normalizeHomeCountryTabIds(HomeCountryTabs.map { it.id })
+                query = ""
+            },
+            onCancel = onBack,
+            onSave = { onSave(draftIds) },
+        )
     }
 }
 
@@ -283,16 +281,15 @@ private fun VisibleCountriesPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(WhaleShapes.Panel)
                 .background(WhaleTokens.Surface.copy(alpha = 0.84f))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                .border(1.dp, WhaleTokens.Border, WhaleShapes.Panel),
         ) {
-            items(countries, key = { it.id }) { country ->
-                val index = countries.indexOf(country)
+            itemsIndexed(items = countries, key = { _, country -> country.id }) { index, country ->
                 VisibleCountryRow(
                     country = country,
                     index = index,
-                    initialRemoveFocusRequester = initialFocusRequester.takeIf { countries.indexOf(country) == 1 },
+                    initialRemoveFocusRequester = initialFocusRequester.takeIf { index == 1 },
                     canMoveUp = !country.locked && index > 1,
                     canMoveDown = !country.locked && index < countries.lastIndex,
                     onMoveUp = { onMoveUp(country.id) },
@@ -315,6 +312,7 @@ private fun VisibleCountryRow(
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    // 整行高亮由子按钮的焦点回调驱动，TvFocusable 只跟踪自身焦点，保留自维护状态
     var rowFocused by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -412,7 +410,9 @@ private fun AddableCountriesPanel(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(1f)
+                .clip(WhaleShapes.Panel)
+                .border(1.dp, WhaleTokens.Border, WhaleShapes.Panel),
         ) {
             items(countries, key = { it.id }) { country ->
                 AddableCountryRow(
@@ -448,6 +448,7 @@ private fun CountrySearchField(
     searchFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    // 描边由 hasFocus 驱动（含子输入框焦点），TvFocusable 只跟踪自身 isFocused，保留自维护状态
     var focused by remember { mutableStateOf(false) }
     var sawKeyboardWhileEditing by remember { mutableStateOf(false) }
     var isKeyboardVisible by remember { mutableStateOf(false) }
@@ -550,18 +551,7 @@ private fun CountrySearchField(
                 modifier = Modifier
                     .padding(start = 18.dp)
                     .weight(1f)
-                    .focusRequester(inputFocusRequester)
-                    .onPreviewKeyEvent { event ->
-                        if (event.key != Key.Back) return@onPreviewKeyEvent false
-                        when (event.type) {
-                            KeyEventType.KeyDown -> {
-                                exitEditing()
-                                true
-                            }
-                            KeyEventType.KeyUp -> true
-                            else -> false
-                        }
-                    },
+                    .focusRequester(inputFocusRequester),
                 decorationBox = { innerTextField ->
                     if (query.isBlank()) {
                         Text("搜索国家名称", color = WhaleTokens.TextSecondary, fontSize = 22.sp)
@@ -595,7 +585,7 @@ private fun AddableCountryRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(74.dp)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CountryMark(country = country)
@@ -660,6 +650,7 @@ private fun CountryIconButton(
     modifier: Modifier = Modifier,
     onFocusChanged: (Boolean) -> Unit = {},
 ) {
+    // 调用点依赖 focusable(enabled) 在禁用时不可聚焦（如置顶行的上移键），与 tvClickable 禁用仍可聚焦的语义不同，保留原样
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
     val background = when {
@@ -707,40 +698,54 @@ private fun CountryTextButton(
     primary: Boolean = false,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
-    val background = when {
-        primary -> if (focused) WhaleTokens.Accent else WhaleTokens.AccentDeep
-        focused -> WhaleTokens.Accent.copy(alpha = 0.15f)
-        else -> WhaleTokens.SurfaceRaised.copy(alpha = 0.78f)
+    val style = if (primary) {
+        TvFocusStyle(
+            fill = WhaleTokens.AccentDeep,
+            fillFocused = WhaleTokens.Accent,
+            border = WhaleTokens.Border,
+            borderFocused = WhaleTokens.Border,
+        )
+    } else {
+        TvFocusStyle(
+            fill = WhaleTokens.SurfaceRaised.copy(alpha = 0.78f),
+            fillFocused = WhaleTokens.FocusFill,
+            border = WhaleTokens.Border,
+            borderFocused = WhaleTokens.FocusBorder,
+        )
     }
-    val border = if (focused && !primary) WhaleTokens.Accent.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.08f)
-    Row(
-        modifier = Modifier
-            .height(58.dp)
-            .clip(shape)
-            .background(background)
-            .border(1.dp, border, shape)
-            .onFocusChanged { focused = it.isFocused }
-            .tvClickable(onClick = onClick)
-            .padding(horizontal = 34.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        icon?.let {
-            Icon(
-                imageVector = it,
-                contentDescription = null,
-                tint = if (primary) WhaleTokens.Background else WhaleTokens.TextPrimary,
-                modifier = Modifier.size(22.dp),
+    TvFocusable(
+        onClick = onClick,
+        modifier = Modifier.height(58.dp),
+        shape = WhaleShapes.Button,
+        style = style,
+    ) { focused ->
+        val contentColor = when {
+            primary -> WhaleTokens.Background
+            focused -> WhaleTokens.Accent
+            else -> WhaleTokens.TextPrimary
+        }
+        Row(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 34.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Text(
+                text = text,
+                color = contentColor,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
             )
         }
-        Text(
-            text = text,
-            color = if (primary) WhaleTokens.Background else WhaleTokens.TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
     }
 }
 

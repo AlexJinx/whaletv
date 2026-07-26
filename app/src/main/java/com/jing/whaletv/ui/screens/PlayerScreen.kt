@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,11 +58,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -330,8 +327,6 @@ private fun PlayerOverlay(
     onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val platformDensity = LocalDensity.current
-
     Box(modifier = modifier) {
         PlayerBackButton(
             onClick = onClose,
@@ -339,22 +334,20 @@ private fun PlayerOverlay(
                 .align(Alignment.TopStart)
                 .padding(start = 28.dp, top = 24.dp),
         )
-        CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
-            PlayerActionRail(
-                favorite = favorite,
-                currentStream = currentStream,
-                sourceIndex = sourceIndex,
-                sourceTotal = sourceTotal,
-                canRetry = canRetry,
-                canSwitchSource = canSwitchSource,
-                onRetry = onRetry,
-                onNextSource = onNextSource,
-                onToggleFavorite = onToggleFavorite,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 132.dp, end = 48.dp),
-            )
-        }
+        PlayerActionRail(
+            favorite = favorite,
+            currentStream = currentStream,
+            sourceIndex = sourceIndex,
+            sourceTotal = sourceTotal,
+            canRetry = canRetry,
+            canSwitchSource = canSwitchSource,
+            onRetry = onRetry,
+            onNextSource = onNextSource,
+            onToggleFavorite = onToggleFavorite,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 132.dp, end = 48.dp),
+        )
         PlayerProgramOverlay(
             currentProgram = currentProgram,
             nextProgram = nextProgram,
@@ -527,7 +520,6 @@ private fun PlayerProgramOverlay(
     onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val platformDensity = LocalDensity.current
     val relevantPrograms = schedulePrograms.filter { it.endAt > now }
     val upcomingPrograms = relevantPrograms
         .filter { it.startAt > now }
@@ -536,49 +528,47 @@ private fun PlayerProgramOverlay(
         .distinctBy { "${it.channelId}|${it.startAt}|${it.title}" }
     if (currentProgram == null && upcomingPrograms.isEmpty()) return
 
-    CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.28f),
-                            Color.Black.copy(alpha = 0.66f),
-                        ),
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.Transparent,
+                        Color.Black.copy(alpha = 0.28f),
+                        Color.Black.copy(alpha = 0.66f),
                     ),
-                )
-                .padding(start = 90.dp, end = 90.dp, top = 86.dp, bottom = 34.dp),
+                ),
+            )
+            .padding(start = 90.dp, end = 90.dp, top = 86.dp, bottom = 34.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(188.dp)
+                .clip(PlayerPanelShape)
+                .background(WhaleTokens.PlayerGlass.copy(alpha = 0.76f))
+                .border(1.dp, WhaleTokens.BorderStrong, PlayerPanelShape)
+                .padding(horizontal = 34.dp, vertical = 26.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(34.dp),
         ) {
-            Row(
+            PlayerCurrentProgramBlock(
+                program = currentProgram,
+                now = now,
+                modifier = Modifier.weight(1.95f),
+            )
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(188.dp)
-                    .clip(PlayerPanelShape)
-                    .background(WhaleTokens.PlayerGlass.copy(alpha = 0.76f))
-                    .border(1.dp, WhaleTokens.BorderStrong, PlayerPanelShape)
-                    .padding(horizontal = 34.dp, vertical = 26.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(34.dp),
-            ) {
-                PlayerCurrentProgramBlock(
-                    program = currentProgram,
-                    now = now,
-                    modifier = Modifier.weight(1.95f),
-                )
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(128.dp)
-                        .background(WhaleTokens.BorderStrong),
-                )
-                PlayerUpcomingProgramBlock(
-                    programs = upcomingPrograms,
-                    onUserInteraction = onUserInteraction,
-                    modifier = Modifier.weight(1.05f),
-                )
-            }
+                    .width(1.dp)
+                    .height(128.dp)
+                    .background(WhaleTokens.BorderStrong),
+            )
+            PlayerUpcomingProgramBlock(
+                programs = upcomingPrograms,
+                onUserInteraction = onUserInteraction,
+                modifier = Modifier.weight(1.05f),
+            )
         }
     }
 }

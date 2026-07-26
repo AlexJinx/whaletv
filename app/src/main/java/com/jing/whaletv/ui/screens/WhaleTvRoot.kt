@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.Density
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jing.whaletv.ui.MainViewModel
 import com.jing.whaletv.ui.Route
+import com.jing.whaletv.ui.screens.settings.SettingsScreen
 
 @Composable
 fun WhaleTvRoot(viewModel: MainViewModel) {

@@ -3,11 +3,11 @@ package com.jing.whaletv.ui
 import com.jing.whaletv.data.model.PlaylistScope
 import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SyncSummary
-import com.jing.whaletv.ui.screens.epgCoverageText
-import com.jing.whaletv.ui.screens.epgGuideCandidateText
-import com.jing.whaletv.ui.screens.epgSampleChannelsText
-import com.jing.whaletv.ui.screens.settingsEpgSourceState
-import com.jing.whaletv.ui.screens.settingsPlaylistSourceState
+import com.jing.whaletv.ui.screens.settings.epgCoverageText
+import com.jing.whaletv.ui.screens.settings.epgGuideCandidateText
+import com.jing.whaletv.ui.screens.settings.epgSampleChannelsText
+import com.jing.whaletv.ui.screens.settings.settingsEpgSourceState
+import com.jing.whaletv.ui.screens.settings.settingsPlaylistSourceState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

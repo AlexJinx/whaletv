@@ -29,7 +29,7 @@
 - Treat "homepage content-card style" as a request to reuse only the right content area's title row and card-grid rhythm, without adding the full page skeleton or left navigation.
 - Player pages, full-screen experiences, dialogs, single-item editors, and temporary action screens should not use a left navigation rail unless the user explicitly asks for the homepage framework.
 - If the user only says "reference the homepage" and the page type does not make the intended layout obvious, decide whether the request means full homepage framework, homepage visual style only, or homepage content-card style. Ask a clarification question when that choice would materially change the screen.
-- In Android Compose screens that need homepage-equivalent scale, use the same density baseline as the homepage: `CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale))`.
+- The TV density baseline `CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale))` is provided once at the root in `WhaleTvRoot`. Screens composed under `WhaleTvRoot` inherit it automatically and must NOT re-wrap themselves in another density provider. Only a screen rendered outside `WhaleTvRoot` (none currently exist) would need its own wrapper.
 
 ### UI Prompt Examples
 
