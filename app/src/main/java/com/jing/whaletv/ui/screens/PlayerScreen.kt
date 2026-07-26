@@ -82,6 +82,7 @@ import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.data.model.nextPlaybackStreamIndex
 import com.jing.whaletv.data.model.playbackStreams
+import com.jing.whaletv.ui.components.tvClickable
 import com.jing.whaletv.ui.components.tvRemoteClick
 import com.jing.whaletv.ui.theme.WhaleTokens
 import java.time.Instant
@@ -372,12 +373,12 @@ private fun PlayerBackButton(
 ) {
     var focused by remember { mutableStateOf(false) }
     val backgroundColor = if (focused) {
-        WhaleTokens.Cyan.copy(alpha = 0.16f)
+        WhaleTokens.Accent.copy(alpha = 0.16f)
     } else {
-        PlayerGlassColor.copy(alpha = 0.52f)
+        WhaleTokens.PlayerGlass.copy(alpha = 0.52f)
     }
     val borderColor = if (focused) {
-        WhaleTokens.Cyan.copy(alpha = 0.82f)
+        WhaleTokens.Accent.copy(alpha = 0.82f)
     } else {
         Color.White.copy(alpha = 0.10f)
     }
@@ -390,15 +391,13 @@ private fun PlayerBackButton(
             .background(backgroundColor)
             .border(1.dp, borderColor, PlayerButtonShape)
             .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick),
+            .tvClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.AutoMirrored.Filled.ArrowBack,
             contentDescription = "返回",
-            tint = WhaleTokens.PrimaryText,
+            tint = WhaleTokens.TextPrimary,
             modifier = Modifier.size(24.dp),
         )
     }
@@ -427,8 +426,8 @@ private fun PlayerActionRail(
         modifier = modifier
             .width(PlayerRailWidth)
             .clip(PlayerRailShape)
-            .background(PlayerGlassColor.copy(alpha = 0.76f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), PlayerRailShape)
+            .background(WhaleTokens.PlayerGlass.copy(alpha = 0.76f))
+            .border(1.dp, WhaleTokens.BorderStrong, PlayerRailShape)
             .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -471,7 +470,7 @@ private fun PlayerRailDivider() {
         modifier = Modifier
             .width(72.dp)
             .height(1.dp)
-            .background(Color.White.copy(alpha = 0.12f)),
+            .background(WhaleTokens.BorderStrong),
     )
 }
 
@@ -498,7 +497,7 @@ private fun PlayerSourceStatusCompact(
     ) {
         Text(
             text = qualityText,
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -508,7 +507,7 @@ private fun PlayerSourceStatusCompact(
         )
         Text(
             text = sourceText,
-            color = WhaleTokens.SecondaryText,
+            color = WhaleTokens.TextSecondary,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -557,8 +556,8 @@ private fun PlayerProgramOverlay(
                     .fillMaxWidth()
                     .height(188.dp)
                     .clip(PlayerPanelShape)
-                    .background(PlayerGlassColor.copy(alpha = 0.76f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), PlayerPanelShape)
+                    .background(WhaleTokens.PlayerGlass.copy(alpha = 0.76f))
+                    .border(1.dp, WhaleTokens.BorderStrong, PlayerPanelShape)
                     .padding(horizontal = 34.dp, vertical = 26.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(34.dp),
@@ -572,7 +571,7 @@ private fun PlayerProgramOverlay(
                     modifier = Modifier
                         .width(1.dp)
                         .height(128.dp)
-                        .background(Color.White.copy(alpha = 0.12f)),
+                        .background(WhaleTokens.BorderStrong),
                 )
                 PlayerUpcomingProgramBlock(
                     programs = upcomingPrograms,
@@ -596,7 +595,7 @@ private fun PlayerCurrentProgramBlock(
     ) {
         Text(
             text = program?.title ?: "暂无当前节目单",
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -609,7 +608,7 @@ private fun PlayerCurrentProgramBlock(
             ) {
                 Text(
                     text = programTimeRange(program),
-                    color = WhaleTokens.TertiaryText,
+                    color = WhaleTokens.TextTertiary,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -638,7 +637,7 @@ private fun PlayerCurrentProgramBlock(
         } else {
             Text(
                 text = "等待节目单更新",
-                color = WhaleTokens.TertiaryText,
+                color = WhaleTokens.TextTertiary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -671,14 +670,14 @@ private fun PlayerProgramProgressBar(
                 .fillMaxWidth(clampedProgress)
                 .height(6.dp)
                 .clip(RoundedCornerShape(999.dp))
-                .background(WhaleTokens.Cyan),
+                .background(WhaleTokens.Accent),
         )
         Box(
             modifier = Modifier
                 .offset(x = (maxWidth - knobSize) * clampedProgress)
                 .size(knobSize)
                 .clip(RoundedCornerShape(999.dp))
-                .background(WhaleTokens.Cyan),
+                .background(WhaleTokens.Accent),
         )
     }
 }
@@ -694,14 +693,14 @@ private fun PlayerProgramElapsedText(program: Program, now: Long) {
     ) {
         Text(
             text = formatProgramDuration(elapsed),
-            color = WhaleTokens.Cyan,
+            color = WhaleTokens.Accent,
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
         Text(
             text = "/ ${formatProgramDuration(duration)}",
-            color = WhaleTokens.TertiaryText,
+            color = WhaleTokens.TextTertiary,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -727,7 +726,7 @@ private fun PlayerUpcomingProgramBlock(
         if (programs.isEmpty()) {
             Text(
                 text = "暂无后续节目",
-                color = WhaleTokens.TertiaryText,
+                color = WhaleTokens.TextTertiary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -740,7 +739,7 @@ private fun PlayerUpcomingProgramBlock(
                     .clip(listShape)
                     .border(
                         width = 1.dp,
-                        color = if (focused) WhaleTokens.Cyan.copy(alpha = 0.52f) else Color.Transparent,
+                        color = if (focused) WhaleTokens.Accent.copy(alpha = 0.52f) else Color.Transparent,
                         shape = listShape,
                     )
                     .onFocusChanged { focused = it.isFocused }
@@ -790,7 +789,7 @@ private fun PlayerUpcomingProgramBlock(
 private fun PlayerSectionLabel(text: String) {
     Text(
         text = text,
-        color = WhaleTokens.Cyan,
+        color = WhaleTokens.Accent,
         fontSize = 17.sp,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
@@ -806,7 +805,7 @@ private fun PlayerScheduleRow(program: Program) {
     ) {
         Text(
             text = formatProgramTime(program.startAt),
-            color = WhaleTokens.TertiaryText,
+            color = WhaleTokens.TextTertiary,
             fontSize = 17.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.width(66.dp),
@@ -814,7 +813,7 @@ private fun PlayerScheduleRow(program: Program) {
         )
         Text(
             text = program.title,
-            color = WhaleTokens.SecondaryText,
+            color = WhaleTokens.TextSecondary,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -871,20 +870,20 @@ private fun PlayerRailButton(
     val interactionSource = remember { MutableInteractionSource() }
     val backgroundColor = when {
         !enabled -> Color.Transparent
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.13f)
-        active -> WhaleTokens.Cyan.copy(alpha = 0.07f)
+        focused -> WhaleTokens.Accent.copy(alpha = 0.13f)
+        active -> WhaleTokens.Accent.copy(alpha = 0.07f)
         else -> Color.Transparent
     }
     val borderColor = when {
         !enabled -> Color.Transparent
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.82f)
-        active -> WhaleTokens.Cyan.copy(alpha = 0.28f)
+        focused -> WhaleTokens.Accent.copy(alpha = 0.82f)
+        active -> WhaleTokens.Accent.copy(alpha = 0.28f)
         else -> Color.Transparent
     }
     val contentColor = when {
-        !enabled -> WhaleTokens.SecondaryText.copy(alpha = 0.32f)
-        active || focused -> WhaleTokens.PrimaryText
-        else -> WhaleTokens.SecondaryText
+        !enabled -> WhaleTokens.TextSecondary.copy(alpha = 0.32f)
+        active || focused -> WhaleTokens.TextPrimary
+        else -> WhaleTokens.TextSecondary
     }
 
     Column(
@@ -911,7 +910,7 @@ private fun PlayerRailButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (enabled) contentColor else WhaleTokens.SecondaryText.copy(alpha = 0.32f),
+            tint = if (enabled) contentColor else WhaleTokens.TextSecondary.copy(alpha = 0.32f),
             modifier = Modifier.size(32.dp),
         )
         Text(
@@ -931,7 +930,7 @@ private fun PlayerRailButton(
 private fun PlayerUnavailableHint(modifier: Modifier = Modifier) {
     Text(
         text = "无法播放",
-        color = WhaleTokens.PrimaryText,
+        color = WhaleTokens.TextPrimary,
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
@@ -961,7 +960,6 @@ private val PlayerPanelShape = RoundedCornerShape(12.dp)
 private val PlayerButtonShape = RoundedCornerShape(9.dp)
 private val PlayerRailShape = PlayerPanelShape
 private val PlayerRailItemShape = RoundedCornerShape(8.dp)
-private val PlayerGlassColor = Color(0xFF111722)
 private val PlayerRailWidth = 116.dp
 private val PlayerRailButtonHeight = 112.dp
 private val PlayerRailStatusHeight = 106.dp

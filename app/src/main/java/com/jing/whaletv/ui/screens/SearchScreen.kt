@@ -3,8 +3,6 @@ package com.jing.whaletv.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,9 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
@@ -33,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,8 +40,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,11 +50,16 @@ import com.jing.whaletv.data.model.TvChannel
 import com.jing.whaletv.ui.ChannelCardItem
 import com.jing.whaletv.ui.SearchKeyboardKeys
 import com.jing.whaletv.ui.components.HomeChannelCard
-import com.jing.whaletv.ui.components.tvRemoteClick
+import com.jing.whaletv.ui.components.RequestInitialFocus
+import com.jing.whaletv.ui.components.TvFocusStyle
+import com.jing.whaletv.ui.components.TvFocusable
+import com.jing.whaletv.ui.components.TvTextButton
+import com.jing.whaletv.ui.components.WhaleTopBar
 import com.jing.whaletv.ui.searchChannels
+import com.jing.whaletv.ui.theme.WhaleShapes
 import com.jing.whaletv.ui.theme.WhaleTokens
+import com.jing.whaletv.ui.theme.WhaleType
 import com.jing.whaletv.ui.toChannelCardItem
-import kotlinx.coroutines.delay
 
 private const val SEARCH_GRID_VISIBLE_ROWS = 3
 private val SearchGridGap = 20.dp
@@ -114,37 +112,15 @@ private fun SearchTopBar(
     resultCount: Int,
     onBack: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .background(WhaleTokens.Sidebar)
-            .padding(horizontal = 48.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    WhaleTopBar(
+        title = "搜索",
+        onBack = onBack,
+        subtitle = query.ifBlank { "搜索频道名称" },
     ) {
-        SearchIconButton(icon = Icons.AutoMirrored.Filled.ArrowBack, label = "返回", onClick = onBack)
-        Icon(Icons.Default.Search, contentDescription = null, tint = WhaleTokens.Cyan, modifier = Modifier.size(24.dp))
-        Text(
-            text = "搜索",
-            color = WhaleTokens.PrimaryText,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 12.dp),
-        )
-        Text(
-            text = query.ifBlank { "搜索频道名称" },
-            color = if (query.isBlank()) WhaleTokens.SecondaryText else WhaleTokens.PrimaryText,
-            fontSize = 14.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .padding(start = 18.dp)
-                .weight(1f),
-        )
         Text(
             text = "$resultCount 个结果",
-            color = WhaleTokens.SecondaryText,
-            fontSize = 13.sp,
+            color = WhaleTokens.TextSecondary,
+            fontSize = WhaleType.Caption,
             fontWeight = FontWeight.Medium,
         )
     }
@@ -170,14 +146,14 @@ private fun SearchInputPanel(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SearchActionButton(
+            TvTextButton(
                 text = "清空",
                 icon = Icons.Default.Clear,
                 enabled = query.isNotEmpty(),
                 onClick = onClear,
             )
             Spacer(Modifier.weight(1f))
-            SearchActionButton(
+            TvTextButton(
                 text = "删除",
                 icon = Icons.AutoMirrored.Filled.Backspace,
                 enabled = query.isNotEmpty(),
@@ -194,17 +170,17 @@ private fun SearchQueryBox(query: String) {
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(WhaleShapes.Button)
             .background(WhaleTokens.SurfaceRaised)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+            .border(1.dp, WhaleTokens.Border, WhaleShapes.Button)
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(Icons.Default.Search, contentDescription = null, tint = WhaleTokens.Cyan, modifier = Modifier.size(20.dp))
+        Icon(Icons.Default.Search, contentDescription = null, tint = WhaleTokens.Accent, modifier = Modifier.size(20.dp))
         Text(
             text = query.ifBlank { "搜索频道名称" },
-            color = if (query.isBlank()) WhaleTokens.SecondaryText else WhaleTokens.PrimaryText,
+            color = if (query.isBlank()) WhaleTokens.TextSecondary else WhaleTokens.TextPrimary,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -217,10 +193,7 @@ private fun SearchQueryBox(query: String) {
 @Composable
 private fun SearchKeyboard(onAppend: (String) -> Unit) {
     val firstKeyFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        delay(120)
-        runCatching { firstKeyFocusRequester.requestFocus() }
-    }
+    RequestInitialFocus(firstKeyFocusRequester)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -254,75 +227,21 @@ private fun SearchKeyboardKey(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
-    Box(
-        modifier = modifier
-            .height(58.dp)
-            .clip(shape)
-            .background(if (focused) WhaleTokens.Cyan.copy(alpha = 0.14f) else WhaleTokens.SurfaceRaised)
-            .border(
-                1.dp,
-                if (focused) WhaleTokens.Cyan.copy(alpha = 0.74f) else Color.White.copy(alpha = 0.07f),
-                shape,
-            )
-            .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    TvFocusable(
+        onClick = onClick,
+        modifier = modifier.height(58.dp),
+        shape = WhaleShapes.Button,
+        style = TvFocusStyle(
+            fill = WhaleTokens.SurfaceRaised,
+            border = WhaleTokens.Border,
+        ),
+    ) { focused ->
         Text(
             text = text,
-            color = if (focused) WhaleTokens.Cyan else WhaleTokens.PrimaryText,
+            color = if (focused) WhaleTokens.Accent else WhaleTokens.TextPrimary,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-@Composable
-private fun SearchActionButton(
-    text: String,
-    icon: ImageVector,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val active = focused && enabled
-    Row(
-        modifier = Modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (active) Color.White.copy(alpha = 0.05f) else Color.Transparent)
-            .border(
-                1.dp,
-                if (active) WhaleTokens.Cyan.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.06f),
-                RoundedCornerShape(6.dp),
-            )
-            .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(enabled = enabled, onClick = onClick)
-            .focusable(enabled)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(
-            icon,
-            contentDescription = text,
-            tint = when {
-                !enabled -> WhaleTokens.SecondaryText.copy(alpha = 0.36f)
-                active -> WhaleTokens.Cyan
-                else -> WhaleTokens.SecondaryText
-            },
-            modifier = Modifier.size(18.dp),
-        )
-        Text(
-            text = text,
-            color = if (enabled) WhaleTokens.PrimaryText else WhaleTokens.SecondaryText.copy(alpha = 0.36f),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
+            modifier = Modifier.align(Alignment.Center),
         )
     }
 }
@@ -345,10 +264,10 @@ private fun SearchResultsPane(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("搜索结果", color = WhaleTokens.PrimaryText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text("搜索结果", color = WhaleTokens.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Text(
                 text = if (query.isBlank()) "输入频道名称开始搜索" else "$query · ${items.size} 个频道",
-                color = WhaleTokens.SecondaryText,
+                color = WhaleTokens.TextSecondary,
                 fontSize = 16.sp,
                 modifier = Modifier.padding(start = 16.dp),
                 maxLines = 1,
@@ -399,34 +318,11 @@ private fun SearchResultsPane(
 private fun SearchEmptyState(text: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(WhaleShapes.Item)
             .background(WhaleTokens.Surface)
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp)),
+            .border(1.dp, WhaleTokens.Border, WhaleShapes.Item),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = WhaleTokens.SecondaryText, fontSize = 16.sp)
-    }
-}
-
-@Composable
-private fun SearchIconButton(icon: ImageVector, label: String, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (focused) Color.White.copy(alpha = 0.05f) else Color.Transparent)
-            .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = if (focused) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
-            modifier = Modifier.size(20.dp),
-        )
+        Text(text, color = WhaleTokens.TextSecondary, fontSize = 16.sp)
     }
 }

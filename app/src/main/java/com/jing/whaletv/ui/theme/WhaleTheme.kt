@@ -31,6 +31,7 @@ object WhaleTokens {
     // ---- 品牌 / 语义 ----
     val Accent = Color(0xFF25D0DE)
     val AccentBright = Color(0xFF52E5F0)
+    val AccentDeep = Color(0xFF10B8C6)
     val Gold = Color(0xFFE0B54F)
     val Green = Color(0xFF34D399)
     val Amber = Color(0xFFE8A94E)
@@ -53,11 +54,20 @@ object WhaleTokens {
     val MetaText = Color(0xFF8899BB)
     val CountDim = Color(0xFF5E7090)
 
-    // ---- 迁移期兼容别名（旧屏幕代码引用，迁移完成后删除） ----
-    val PrimaryText = TextPrimary
-    val SecondaryText = TextSecondary
-    val TertiaryText = TextTertiary
-    val Cyan = Accent
+    // ---- 频道卡片 ----
+    val CardTitle = Color(0xFFD0DCE8)
+    val CardTitleActive = Color(0xFFE8F4F5)
+    val CardQualityText = Color(0xFF99AEC8)
+    val LogoText = Color(0xFFE8F0FF)
+    val LogoTextSoft = Color(0xFFC8E0FF)
+    val LiveTealBright = Color(0xFF8FE3D8)
+    val OkText = Color(0xFF7ACEA0)
+    val WarnDot = Color(0xFFE0A04E)
+    val WarnText = Color(0xFFE0B875)
+
+    // ---- 播放器 ----
+    /** 播放器覆盖层玻璃底色，使用处按需 copy(alpha)。 */
+    val PlayerGlass = Color(0xFF111722)
 }
 
 private val WhaleColors = darkColorScheme(

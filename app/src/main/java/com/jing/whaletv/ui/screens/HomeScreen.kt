@@ -2,8 +2,6 @@ package com.jing.whaletv.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -98,7 +96,10 @@ import com.jing.whaletv.ui.homeSatelliteChannelComparator
 import com.jing.whaletv.ui.normalizeHomeCategoryIdForCountry
 import com.jing.whaletv.ui.toChannelCardItem
 import com.jing.whaletv.ui.components.HomeChannelCard
-import com.jing.whaletv.ui.components.tvRemoteClick
+import com.jing.whaletv.ui.components.TvFocusStyle
+import com.jing.whaletv.ui.components.TvFocusable
+import com.jing.whaletv.ui.components.TvIconButton
+import com.jing.whaletv.ui.theme.WhaleShapes
 import com.jing.whaletv.ui.theme.WhaleTokens
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -200,7 +201,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.dp),
-                    color = WhaleTokens.Cyan,
+                    color = WhaleTokens.Accent,
                     trackColor = WhaleTokens.Surface,
                 )
             }
@@ -259,10 +260,10 @@ private fun GlobalTopBar(
         else -> "等待同步"
     }
     val statusColor = when {
-        isRefreshing -> WhaleTokens.Cyan
+        isRefreshing -> WhaleTokens.Accent
         syncSummary.playlistLastError != null -> WhaleTokens.Red
         syncSummary.playlistLastSuccessAt != null -> WhaleTokens.Green
-        else -> WhaleTokens.SecondaryText
+        else -> WhaleTokens.TextSecondary
     }
     val searchFocusRequester = remember { FocusRequester() }
     val favoritesFocusRequester = remember { FocusRequester() }
@@ -286,7 +287,7 @@ private fun GlobalTopBar(
         )
         Text(
             text = "鲸电视",
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 12.dp),
@@ -352,7 +353,7 @@ private fun GlobalTopBar(
                 .padding(horizontal = 22.dp)
                 .width(1.dp)
                 .height(22.dp)
-                .background(Color.White.copy(alpha = 0.08f)),
+                .background(WhaleTokens.Border),
         )
         Box(
             modifier = Modifier
@@ -360,12 +361,12 @@ private fun GlobalTopBar(
                 .clip(RoundedCornerShape(50))
                 .background(statusColor),
         )
-        Text(statusText, color = WhaleTokens.TertiaryText, fontSize = 13.sp, modifier = Modifier.padding(start = 7.dp))
+        Text(statusText, color = WhaleTokens.TextTertiary, fontSize = 13.sp, modifier = Modifier.padding(start = 7.dp))
         Text(
             text = DateTimeFormatter.ofPattern("HH:mm")
                 .withZone(ZoneId.systemDefault())
                 .format(Instant.ofEpochMilli(now)),
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 16.dp),
@@ -382,57 +383,43 @@ private fun TopBarAction(
     downFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
-    val backgroundColor = when {
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.15f)
-        active -> WhaleTokens.Cyan.copy(alpha = 0.07f)
-        else -> Color.Transparent
-    }
-    val borderColor = when {
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.68f)
-        active -> WhaleTokens.Cyan.copy(alpha = 0.26f)
-        else -> Color.Transparent
-    }
-    val actionColor = if (focused || active) WhaleTokens.Cyan else WhaleTokens.SecondaryText
-    Row(
-        modifier = modifier
-            .clip(shape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
-            .onFocusChanged { focused = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                if (downFocusRequester == null || event.key != Key.DirectionDown) {
-                    return@onPreviewKeyEvent false
-                }
-                when (event.type) {
-                    KeyEventType.KeyDown -> {
-                        downFocusRequester.requestFocus()
-                        true
-                    }
-                    KeyEventType.KeyUp -> true
-                    else -> false
-                }
+    TvFocusable(
+        onClick = onClick,
+        selected = active,
+        shape = WhaleShapes.Button,
+        modifier = modifier.onPreviewKeyEvent { event ->
+            if (downFocusRequester == null || event.key != Key.DirectionDown) {
+                return@onPreviewKeyEvent false
             }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = text,
-            tint = actionColor,
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            text,
-            color = if (focused) WhaleTokens.PrimaryText else if (active) WhaleTokens.Cyan else WhaleTokens.PrimaryText,
-            fontSize = 14.sp,
-            fontWeight = if (focused || active) FontWeight.SemiBold else FontWeight.Medium,
-        )
+            when (event.type) {
+                KeyEventType.KeyDown -> {
+                    downFocusRequester.requestFocus()
+                    true
+                }
+                KeyEventType.KeyUp -> true
+                else -> false
+            }
+        },
+    ) { focused ->
+        val actionColor = if (focused || active) WhaleTokens.Accent else WhaleTokens.TextSecondary
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = text,
+                tint = actionColor,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text,
+                color = if (focused) WhaleTokens.TextPrimary else if (active) WhaleTokens.Accent else WhaleTokens.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = if (focused || active) FontWeight.SemiBold else FontWeight.Medium,
+            )
+        }
     }
 }
 
@@ -496,52 +483,35 @@ private fun CountryTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
-    val backgroundColor = when {
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.15f)
-        selected -> WhaleTokens.Cyan.copy(alpha = 0.07f)
-        else -> Color.Transparent
-    }
-    val borderColor = when {
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.68f)
-        selected -> WhaleTokens.Cyan.copy(alpha = 0.26f)
-        else -> Color.Transparent
-    }
-    val borderWidth = if (focused || selected) 1.dp else 0.dp
-    val contentColor = if (focused || selected) WhaleTokens.Cyan else Color(0xFF7A8EAA)
-    Row(
-        modifier = modifier
-            .height(40.dp)
-            .clip(shape)
-            .background(backgroundColor)
-            .border(
-                width = borderWidth,
-                color = borderColor,
-                shape = shape,
-            )
-            .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (country.locked) {
-            Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(14.dp),
+    TvFocusable(
+        onClick = onClick,
+        selected = selected,
+        shape = WhaleShapes.Button,
+        modifier = modifier.height(40.dp),
+    ) { focused ->
+        val contentColor = if (focused || selected) WhaleTokens.Accent else WhaleTokens.IconMuted
+        Row(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (country.locked) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Text(
+                text = country.label,
+                color = contentColor,
+                fontSize = 16.sp,
+                fontWeight = if (focused || selected) FontWeight.SemiBold else FontWeight.Medium,
             )
         }
-        Text(
-            text = country.label,
-            color = contentColor,
-            fontSize = 16.sp,
-            fontWeight = if (focused || selected) FontWeight.SemiBold else FontWeight.Medium,
-        )
     }
 }
 
@@ -550,32 +520,27 @@ private fun CountryEditButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
-    val backgroundColor = if (focused) WhaleTokens.Cyan.copy(alpha = 0.15f) else Color.Transparent
-    val borderColor = if (focused) WhaleTokens.Cyan.copy(alpha = 0.68f) else Color.Transparent
-    val contentColor = if (focused) WhaleTokens.Cyan else WhaleTokens.SecondaryText
-    Row(
-        modifier = modifier
-            .height(40.dp)
-            .clip(shape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
-            .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(Icons.Default.Edit, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
-        Text(
-            "编辑",
-            color = contentColor,
-            fontSize = 16.sp,
-            fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
-        )
+    TvFocusable(
+        onClick = onClick,
+        shape = WhaleShapes.Button,
+        modifier = modifier.height(40.dp),
+    ) { focused ->
+        val contentColor = if (focused) WhaleTokens.Accent else WhaleTokens.TextSecondary
+        Row(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.Default.Edit, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+            Text(
+                "编辑",
+                color = contentColor,
+                fontSize = 16.sp,
+                fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
+            )
+        }
     }
 }
 
@@ -612,33 +577,20 @@ private fun CategoryRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(14.dp)
-    val backgroundColor = when {
-        focused && selected -> WhaleTokens.Cyan.copy(alpha = 0.16f)
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.10f)
-        selected -> WhaleTokens.SurfaceRaised
-        else -> Color.Transparent
-    }
-    val borderColor = when {
-        focused && selected -> WhaleTokens.Cyan.copy(alpha = 0.78f)
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.58f)
-        else -> Color.Transparent
-    }
-    val contentColor = if (focused || selected) WhaleTokens.Cyan else WhaleTokens.PrimaryText
-    val iconColor = if (focused || selected) WhaleTokens.Cyan else Color(0xFF7A8EAA)
-    Box(
+    TvFocusable(
+        onClick = onClick,
+        selected = selected,
+        shape = WhaleShapes.Card,
+        style = TvFocusStyle(
+            fillSelected = WhaleTokens.SurfaceRaised,
+            borderSelected = Color.Transparent,
+        ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .clip(shape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
-            .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick),
-    ) {
+            .height(44.dp),
+    ) { focused ->
+        val contentColor = if (focused || selected) WhaleTokens.Accent else WhaleTokens.TextPrimary
+        val iconColor = if (focused || selected) WhaleTokens.Accent else WhaleTokens.IconMuted
         if (selected) {
             Box(
                 modifier = Modifier
@@ -646,7 +598,7 @@ private fun CategoryRow(
                     .width(4.dp)
                     .height(28.dp)
                     .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
-                    .background(WhaleTokens.Cyan),
+                    .background(WhaleTokens.Accent),
             )
         }
         Row(
@@ -671,7 +623,7 @@ private fun CategoryRow(
             Spacer(Modifier.weight(1f))
             Text(
                 text = count.toString(),
-                color = if (focused || selected) WhaleTokens.Cyan.copy(alpha = 0.90f) else Color(0xFF5E7090),
+                color = if (focused || selected) WhaleTokens.Accent.copy(alpha = 0.90f) else WhaleTokens.CountDim,
                 fontSize = 14.sp,
             )
         }
@@ -790,9 +742,7 @@ private fun ChannelContent(
     val firstCardFocusRequester = remember(firstItemKey) { FocusRequester() }
     var highlightedCardKey by remember(firstItemKey) { mutableStateOf(firstItemKey) }
     var gridFocused by remember(firstItemKey) { mutableStateOf(false) }
-    var refreshFocused by remember { mutableStateOf(false) }
     var didRequestInitialGridFocus by remember { mutableStateOf(false) }
-    val refreshShape = RoundedCornerShape(8.dp)
     LaunchedEffect(firstItemKey) {
         if (firstItemKey != null && !didRequestInitialGridFocus) {
             delay(120)
@@ -811,50 +761,36 @@ private fun ChannelContent(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, color = WhaleTokens.PrimaryText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text(title, color = WhaleTokens.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Text(
                 text = "$count 个频道",
-                color = WhaleTokens.SecondaryText,
+                color = WhaleTokens.TextSecondary,
                 fontSize = 16.sp,
                 modifier = Modifier.padding(start = 16.dp),
             )
             if (isGlobalMode) {
                 Text(
                     text = "全局",
-                    color = WhaleTokens.Cyan,
+                    color = WhaleTokens.Accent,
                     fontSize = 12.sp,
                     modifier = Modifier
                         .padding(start = 10.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(WhaleTokens.Cyan.copy(alpha = 0.12f))
+                        .background(WhaleTokens.Accent.copy(alpha = 0.12f))
                         .padding(horizontal = 7.dp, vertical = 3.dp),
                 )
             }
             Spacer(Modifier.weight(1f))
             Text(
                 text = "最近同步 ${lastSyncAt?.let(::formatShortTime) ?: "--:--"}",
-                color = WhaleTokens.SecondaryText,
+                color = WhaleTokens.TextSecondary,
                 fontSize = 13.sp,
             )
-            Icon(
-                imageVector = Icons.Default.Refresh,
+            TvIconButton(
+                icon = Icons.Default.Refresh,
                 contentDescription = "刷新",
-                tint = if (refreshFocused) WhaleTokens.Cyan else WhaleTokens.SecondaryText,
-                modifier = Modifier
-                    .padding(start = 12.dp)
-                    .size(32.dp)
-                    .clip(refreshShape)
-                    .background(if (refreshFocused) WhaleTokens.Cyan.copy(alpha = 0.14f) else Color.Transparent)
-                    .border(
-                        1.dp,
-                        if (refreshFocused) WhaleTokens.Cyan.copy(alpha = 0.68f) else Color.Transparent,
-                        refreshShape,
-                    )
-                    .onFocusChanged { refreshFocused = it.isFocused }
-                    .tvRemoteClick(onClick = onRefresh)
-                    .focusable()
-                    .clickable(onClick = onRefresh)
-                    .padding(7.dp),
+                onClick = onRefresh,
+                modifier = Modifier.padding(start = 12.dp),
             )
         }
         Spacer(Modifier.height(20.dp))
@@ -903,12 +839,12 @@ private fun ChannelContent(
 private fun EmptyHomeState(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(WhaleShapes.Item)
             .background(WhaleTokens.Surface)
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp)),
+            .border(1.dp, WhaleTokens.Border, WhaleShapes.Item),
         contentAlignment = Alignment.Center,
     ) {
-        Text("暂无频道", color = WhaleTokens.SecondaryText, fontSize = 16.sp)
+        Text("暂无频道", color = WhaleTokens.TextSecondary, fontSize = 16.sp)
     }
 }
 

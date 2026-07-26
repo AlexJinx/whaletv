@@ -2,8 +2,6 @@ package com.jing.whaletv.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jing.whaletv.ui.ChannelCardItem
+import com.jing.whaletv.ui.theme.WhaleGradients
 import com.jing.whaletv.ui.theme.WhaleTokens
 
 @Composable
@@ -64,7 +63,7 @@ fun HomeChannelCard(
             .background(WhaleTokens.SurfaceRaised)
             .border(
                 width = 2.dp,
-                color = if (active) WhaleTokens.Cyan else Color.White.copy(alpha = 0.04f),
+                color = if (active) WhaleTokens.Accent else Color.White.copy(alpha = 0.04f),
                 shape = shape,
             )
             .onFocusChanged {
@@ -74,9 +73,7 @@ fun HomeChannelCard(
                 }
                 onFocusChanged(it.isFocused)
             }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick),
+            .tvClickable(onClick = onClick),
     ) {
         ChannelLogoPanel(
             item = item,
@@ -95,7 +92,7 @@ fun HomeChannelCard(
         ) {
             Text(
                 text = item.title,
-                color = if (active) Color(0xFFE8F4F5) else Color(0xFFD0DCE8),
+                color = if (active) WhaleTokens.CardTitleActive else WhaleTokens.CardTitle,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
@@ -103,7 +100,7 @@ fun HomeChannelCard(
             )
             Text(
                 text = item.categoryLabel,
-                color = Color(0xFF7A8EAA),
+                color = WhaleTokens.IconMuted,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -135,11 +132,7 @@ private fun ChannelLogoPanel(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier.background(
-            Brush.linearGradient(
-                listOf(Color(0xFF111620), Color(0xFF0D1119)),
-            ),
-        ),
+        modifier = modifier.background(WhaleGradients.LogoPanel),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -151,17 +144,17 @@ private fun ChannelLogoPanel(
         quality?.let {
             Text(
                 text = it,
-                color = if (it == "4K" || it == "8K") WhaleTokens.Cyan else Color(0xFF99AEC8),
+                color = if (it == "4K" || it == "8K") WhaleTokens.Accent else WhaleTokens.CardQualityText,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(12.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(if (it == "4K" || it == "8K") WhaleTokens.Cyan.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.07f))
+                    .background(if (it == "4K" || it == "8K") WhaleTokens.Accent.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.07f))
                     .border(
                         1.dp,
-                        if (it == "4K" || it == "8K") WhaleTokens.Cyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.09f),
+                        if (it == "4K" || it == "8K") WhaleTokens.Accent.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.09f),
                         RoundedCornerShape(4.dp),
                     )
                     .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -173,10 +166,10 @@ private fun ChannelLogoPanel(
 @Composable
 private fun LogoBadge(item: ChannelCardItem, focused: Boolean) {
     val label = item.logoLabel
-    val badgeBrush = Brush.linearGradient(listOf(Color(0xFF1A2540), Color(0xFF0F1A30)))
+    val badgeBrush = WhaleGradients.LogoBadge
     val labelColor = when {
-        label.equals("CGTN", ignoreCase = true) -> Color(0xFFC8E0FF)
-        else -> Color(0xFFE8F0FF)
+        label.equals("CGTN", ignoreCase = true) -> WhaleTokens.LogoTextSoft
+        else -> WhaleTokens.LogoText
     }
     val labelFontSize = when {
         label.equals("CGTN", ignoreCase = true) -> 20.sp
@@ -193,7 +186,7 @@ private fun LogoBadge(item: ChannelCardItem, focused: Boolean) {
             .background(badgeBrush)
             .border(
                 1.dp,
-                if (focused) WhaleTokens.Cyan.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.06f),
+                if (focused) WhaleTokens.Accent.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.06f),
                 RoundedCornerShape(12.dp),
             )
             .padding(horizontal = 8.dp),
@@ -216,8 +209,8 @@ private fun NowPlayingRow(title: String, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(7.dp))
-            .background(Color(0xFF5FC8B8).copy(alpha = 0.09f))
-            .border(1.dp, Color(0xFF5FC8B8).copy(alpha = 0.14f), RoundedCornerShape(7.dp))
+            .background(WhaleTokens.Teal.copy(alpha = 0.09f))
+            .border(1.dp, WhaleTokens.Teal.copy(alpha = 0.14f), RoundedCornerShape(7.dp))
             .padding(horizontal = 9.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -226,11 +219,11 @@ private fun NowPlayingRow(title: String, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .size(5.dp)
                 .clip(RoundedCornerShape(50))
-                .background(Color(0xFF5FC8B8)),
+                .background(WhaleTokens.Teal),
         )
         Text(
             text = "正在播出：$title",
-            color = Color(0xFF8FE3D8),
+            color = WhaleTokens.LiveTealBright,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -248,9 +241,9 @@ private fun ChannelMetaRow(item: ChannelCardItem) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (item.sourceCount > 0) {
-            ChannelMetaChip(text = "可用", dotColor = WhaleTokens.Green, textColor = Color(0xFF7ACEA0))
+            ChannelMetaChip(text = "可用", dotColor = WhaleTokens.Green, textColor = WhaleTokens.OkText)
         } else {
-            ChannelMetaChip(text = "暂无可用源", dotColor = Color(0xFFE0A04E), textColor = Color(0xFFE0B875))
+            ChannelMetaChip(text = "暂无可用源", dotColor = WhaleTokens.WarnDot, textColor = WhaleTokens.WarnText)
         }
         ChannelMetaChip(text = "${item.sourceCount} 个源")
         if (item.hasEpg) {
@@ -263,7 +256,7 @@ private fun ChannelMetaRow(item: ChannelCardItem) {
 private fun ChannelMetaChip(
     text: String,
     dotColor: Color? = null,
-    textColor: Color = Color(0xFF8899BB),
+    textColor: Color = WhaleTokens.MetaText,
     showCalendar: Boolean = false,
 ) {
     Row(

@@ -59,8 +59,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
@@ -81,6 +79,8 @@ import com.jing.whaletv.ui.HomeCountryTabs
 import com.jing.whaletv.ui.MAX_HOME_COUNTRY_TABS
 import com.jing.whaletv.ui.addHomeCountryTab
 import com.jing.whaletv.ui.addableHomeCountryEntries
+import com.jing.whaletv.ui.components.FlagImage
+import com.jing.whaletv.ui.components.tvClickable
 import com.jing.whaletv.ui.components.tvRemoteClick
 import com.jing.whaletv.ui.homeCountryEntries
 import com.jing.whaletv.ui.moveHomeCountryTab
@@ -90,7 +90,6 @@ import com.jing.whaletv.ui.theme.WhaleTokens
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlinx.coroutines.delay
 
 @Composable
@@ -211,10 +210,10 @@ private fun CountryEditorTopBar(
         else -> "等待同步"
     }
     val statusColor = when {
-        isRefreshing -> WhaleTokens.Cyan
+        isRefreshing -> WhaleTokens.Accent
         syncSummary.playlistLastError != null -> WhaleTokens.Red
         syncSummary.playlistLastSuccessAt != null -> WhaleTokens.Green
-        else -> WhaleTokens.SecondaryText
+        else -> WhaleTokens.TextSecondary
     }
 
     Row(
@@ -235,7 +234,7 @@ private fun CountryEditorTopBar(
         )
         Text(
             text = "鲸电视",
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 12.dp),
@@ -247,12 +246,12 @@ private fun CountryEditorTopBar(
                 .clip(RoundedCornerShape(50))
                 .background(statusColor),
         )
-        Text(statusText, color = WhaleTokens.TertiaryText, fontSize = 15.sp, modifier = Modifier.padding(start = 10.dp))
+        Text(statusText, color = WhaleTokens.TextTertiary, fontSize = 15.sp, modifier = Modifier.padding(start = 10.dp))
         Text(
             text = DateTimeFormatter.ofPattern("HH:mm")
                 .withZone(ZoneId.systemDefault())
                 .format(Instant.ofEpochMilli(now)),
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(start = 10.dp),
@@ -276,9 +275,9 @@ private fun VisibleCountriesPanel(
                 .padding(bottom = 18.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Text("已显示在首页", color = WhaleTokens.PrimaryText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text("已显示在首页", color = WhaleTokens.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
-            Text("最多显示 20 个", color = WhaleTokens.TertiaryText, fontSize = 16.sp)
+            Text("最多显示 20 个", color = WhaleTokens.TextTertiary, fontSize = 16.sp)
         }
         LazyColumn(
             modifier = Modifier
@@ -321,21 +320,21 @@ private fun VisibleCountryRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(92.dp)
-            .background(if (rowFocused) WhaleTokens.Cyan.copy(alpha = 0.08f) else Color.Transparent)
-            .border(1.dp, if (rowFocused) WhaleTokens.Cyan.copy(alpha = 0.20f) else Color.Transparent)
+            .background(if (rowFocused) WhaleTokens.Accent.copy(alpha = 0.08f) else Color.Transparent)
+            .border(1.dp, if (rowFocused) WhaleTokens.Accent.copy(alpha = 0.20f) else Color.Transparent)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = (index + 1).toString(),
-            color = WhaleTokens.SecondaryText,
+            color = WhaleTokens.TextSecondary,
             fontSize = 15.sp,
             modifier = Modifier.width(28.dp),
         )
         CountryMark(country = country, modifier = Modifier.padding(start = 2.dp))
         Text(
             text = country.label,
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -346,7 +345,7 @@ private fun VisibleCountryRow(
         )
         Text(
             text = "${country.channelCount} 个频道",
-            color = WhaleTokens.TertiaryText,
+            color = WhaleTokens.TextTertiary,
             fontSize = 16.sp,
             modifier = Modifier.width(132.dp),
         )
@@ -398,9 +397,9 @@ private fun AddableCountriesPanel(
                 .padding(bottom = 18.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Text("可添加国家", color = WhaleTokens.PrimaryText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text("可添加国家", color = WhaleTokens.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
-            Text("选择国家添加到顶部显示", color = WhaleTokens.TertiaryText, fontSize = 16.sp)
+            Text("选择国家添加到顶部显示", color = WhaleTokens.TextTertiary, fontSize = 16.sp)
         }
         CountrySearchField(
             query = query,
@@ -429,10 +428,10 @@ private fun AddableCountriesPanel(
                 .height(36.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Default.Info, contentDescription = null, tint = WhaleTokens.SecondaryText, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Info, contentDescription = null, tint = WhaleTokens.TextSecondary, modifier = Modifier.size(18.dp))
             Text(
                 text = "共 $totalCountryCount 个国家和地区",
-                color = WhaleTokens.SecondaryText,
+                color = WhaleTokens.TextSecondary,
                 fontSize = 15.sp,
                 modifier = Modifier.padding(start = 10.dp),
             )
@@ -516,7 +515,7 @@ private fun CountrySearchField(
             .background(WhaleTokens.SurfaceRaised.copy(alpha = 0.86f))
             .border(
                 1.dp,
-                if (focused) WhaleTokens.Cyan.copy(alpha = 0.68f) else Color.White.copy(alpha = 0.08f),
+                if (focused) WhaleTokens.Accent.copy(alpha = 0.68f) else Color.White.copy(alpha = 0.08f),
                 RoundedCornerShape(8.dp),
             )
             .onPreviewKeyEvent { event ->
@@ -531,25 +530,23 @@ private fun CountrySearchField(
                 }
             }
             .onFocusChanged { focused = it.hasFocus }
-            .tvRemoteClick { onEditingChange(true) }
             .focusRequester(searchFocusRequester)
-            .focusable()
-            .clickable { onEditingChange(true) }
+            .tvClickable { onEditingChange(true) }
             .padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Search, contentDescription = null, tint = WhaleTokens.SecondaryText, modifier = Modifier.size(28.dp))
+        Icon(Icons.Default.Search, contentDescription = null, tint = WhaleTokens.TextSecondary, modifier = Modifier.size(28.dp))
         if (isEditing) {
             BasicTextField(
                 value = query,
                 onValueChange = onQueryChange,
                 textStyle = TextStyle(
-                    color = WhaleTokens.PrimaryText,
+                    color = WhaleTokens.TextPrimary,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Medium,
                 ),
                 singleLine = true,
-                cursorBrush = SolidColor(WhaleTokens.Cyan),
+                cursorBrush = SolidColor(WhaleTokens.Accent),
                 modifier = Modifier
                     .padding(start = 18.dp)
                     .weight(1f)
@@ -567,7 +564,7 @@ private fun CountrySearchField(
                     },
                 decorationBox = { innerTextField ->
                     if (query.isBlank()) {
-                        Text("搜索国家名称", color = WhaleTokens.SecondaryText, fontSize = 22.sp)
+                        Text("搜索国家名称", color = WhaleTokens.TextSecondary, fontSize = 22.sp)
                     }
                     innerTextField()
                 },
@@ -575,7 +572,7 @@ private fun CountrySearchField(
         } else {
             Text(
                 text = query.ifBlank { "搜索国家名称" },
-                color = if (query.isBlank()) WhaleTokens.SecondaryText else WhaleTokens.PrimaryText,
+                color = if (query.isBlank()) WhaleTokens.TextSecondary else WhaleTokens.TextPrimary,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -604,7 +601,7 @@ private fun AddableCountryRow(
         CountryMark(country = country)
         Text(
             text = country.label,
-            color = WhaleTokens.PrimaryText,
+            color = WhaleTokens.TextPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -615,7 +612,7 @@ private fun AddableCountryRow(
         )
         Text(
             text = "${country.channelCount} 个频道",
-            color = WhaleTokens.TertiaryText,
+            color = WhaleTokens.TextTertiary,
             fontSize = 17.sp,
             modifier = Modifier.width(132.dp),
         )
@@ -666,12 +663,12 @@ private fun CountryIconButton(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
     val background = when {
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.17f)
+        focused -> WhaleTokens.Accent.copy(alpha = 0.17f)
         enabled -> WhaleTokens.SurfaceRaised.copy(alpha = 0.82f)
         else -> WhaleTokens.SurfaceRaised.copy(alpha = 0.28f)
     }
     val border = when {
-        focused -> WhaleTokens.Cyan
+        focused -> WhaleTokens.Accent
         enabled -> Color.White.copy(alpha = 0.08f)
         else -> Color.Transparent
     }
@@ -694,9 +691,9 @@ private fun CountryIconButton(
             imageVector = icon,
             contentDescription = null,
             tint = when {
-                !enabled -> WhaleTokens.SecondaryText.copy(alpha = 0.42f)
-                focused -> WhaleTokens.Cyan
-                else -> WhaleTokens.PrimaryText
+                !enabled -> WhaleTokens.TextSecondary.copy(alpha = 0.42f)
+                focused -> WhaleTokens.Accent
+                else -> WhaleTokens.TextPrimary
             },
             modifier = Modifier.size(28.dp),
         )
@@ -713,11 +710,11 @@ private fun CountryTextButton(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
     val background = when {
-        primary -> if (focused) WhaleTokens.Cyan else Color(0xFF10B8C6)
-        focused -> WhaleTokens.Cyan.copy(alpha = 0.15f)
+        primary -> if (focused) WhaleTokens.Accent else WhaleTokens.AccentDeep
+        focused -> WhaleTokens.Accent.copy(alpha = 0.15f)
         else -> WhaleTokens.SurfaceRaised.copy(alpha = 0.78f)
     }
-    val border = if (focused && !primary) WhaleTokens.Cyan.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.08f)
+    val border = if (focused && !primary) WhaleTokens.Accent.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.08f)
     Row(
         modifier = Modifier
             .height(58.dp)
@@ -725,9 +722,7 @@ private fun CountryTextButton(
             .background(background)
             .border(1.dp, border, shape)
             .onFocusChanged { focused = it.isFocused }
-            .tvRemoteClick(onClick = onClick)
-            .focusable()
-            .clickable(onClick = onClick)
+            .tvClickable(onClick = onClick)
             .padding(horizontal = 34.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -736,13 +731,13 @@ private fun CountryTextButton(
             Icon(
                 imageVector = it,
                 contentDescription = null,
-                tint = if (primary) WhaleTokens.Background else WhaleTokens.PrimaryText,
+                tint = if (primary) WhaleTokens.Background else WhaleTokens.TextPrimary,
                 modifier = Modifier.size(22.dp),
             )
         }
         Text(
             text = text,
-            color = if (primary) WhaleTokens.Background else WhaleTokens.PrimaryText,
+            color = if (primary) WhaleTokens.Background else WhaleTokens.TextPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -756,50 +751,24 @@ private fun RemoteHint(key: String, label: String) {
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(50))
-                .border(1.dp, WhaleTokens.SecondaryText.copy(alpha = 0.62f), RoundedCornerShape(50)),
+                .border(1.dp, WhaleTokens.TextSecondary.copy(alpha = 0.62f), RoundedCornerShape(50)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(key, color = WhaleTokens.TertiaryText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(key, color = WhaleTokens.TextTertiary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
-        Text(label, color = WhaleTokens.TertiaryText, fontSize = 17.sp, modifier = Modifier.padding(start = 12.dp))
+        Text(label, color = WhaleTokens.TextTertiary, fontSize = 17.sp, modifier = Modifier.padding(start = 12.dp))
     }
 }
 
 @Composable
 private fun CountryMark(country: CountryEntry, modifier: Modifier = Modifier) {
-    val color = remember(country.id) { countryColor(country.id) }
-    val context = LocalContext.current
-    val flagCode = remember(country.id) { flagResourceCode(country.id) }
-    val flagResourceId = remember(flagCode) {
-        flagCode?.let { code ->
-            context.resources.getIdentifier("flag_$code", "drawable", context.packageName)
-        } ?: 0
-    }
-    Box(
+    FlagImage(
+        countryId = country.id,
+        contentDescription = "${country.label}国旗",
         modifier = modifier
             .width(64.dp)
-            .height(42.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (flagResourceId == 0) color else Color.Transparent)
-            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(4.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (flagResourceId != 0) {
-            Image(
-                painter = painterResource(id = flagResourceId),
-                contentDescription = "${country.label}国旗",
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Text(
-                text = country.id.take(2).uppercase(Locale.ROOT),
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
+            .height(42.dp),
+    )
 }
 
 @Composable
@@ -810,31 +779,4 @@ private fun RowDivider() {
             .height(1.dp)
             .background(Color.White.copy(alpha = 0.07f)),
     )
-}
-
-private fun countryColor(id: String): Color {
-    return when (id.lowercase(Locale.ROOT)) {
-        "cn" -> Color(0xFFE1192D)
-        "us" -> Color(0xFF2D5BBA)
-        "jp" -> Color(0xFFF3F5F8)
-        "uk" -> Color(0xFF21468B)
-        "kr" -> Color(0xFFF4F5F7)
-        "de" -> Color(0xFF101010)
-        "fr" -> Color(0xFF2E5AAC)
-        "ca" -> Color(0xFFE03535)
-        "au" -> Color(0xFF234B9B)
-        "sg" -> Color(0xFFD92D2D)
-        "in" -> Color(0xFFE58A24)
-        "br" -> Color(0xFF229C45)
-        else -> Color(0xFF27415F)
-    }
-}
-
-private fun flagResourceCode(id: String): String? {
-    val normalized = id.lowercase(Locale.ROOT)
-    if (normalized == "other") return null
-    return when (normalized) {
-        "uk" -> "gb"
-        else -> normalized.takeIf { it.length == 2 && it.all(Char::isLetter) }
-    }
 }

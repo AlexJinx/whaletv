@@ -18,7 +18,10 @@ object WhaleGradients {
         listOf(Color(0xFF151B28), Color(0xFF0E131D)),
     )
     val LogoPanel = Brush.linearGradient(
-        listOf(Color(0xFF141A26), Color(0xFF0C111B)),
+        listOf(Color(0xFF111620), Color(0xFF0D1119)),
+    )
+    val LogoBadge = Brush.linearGradient(
+        listOf(Color(0xFF1A2540), Color(0xFF0F1A30)),
     )
     val AccentBar = Brush.horizontalGradient(
         listOf(WhaleTokens.Accent, WhaleTokens.AccentBright),
