@@ -7,6 +7,7 @@ private val PlaybackSupportedSchemes = setOf("http", "https", "rtsp")
 internal const val STREAM_UNHEALTHY_FAILURE_THRESHOLD = 3
 
 fun TvChannel.playbackStreams(): List<TvStream> {
+    if (!isAvailable) return emptyList()
     return streams
         .asSequence()
         .filter { it.isPlaybackSupported() }

@@ -147,8 +147,27 @@ interface ChannelDao {
 
 @Dao
 interface ProgramDao {
-    @Query("SELECT * FROM programs ORDER BY channelId ASC, startAt ASC, endAt ASC")
-    fun observeAllPrograms(): Flow<List<ProgramEntity>>
+    @Query(
+        """
+        SELECT * FROM programs
+        WHERE endAt > :now
+        AND (
+            startAt <= :now
+            OR (
+                SELECT COUNT(*) FROM programs AS future
+                WHERE future.channelId = programs.channelId
+                AND future.startAt > :now
+                AND (
+                    future.startAt < programs.startAt
+                    OR (future.startAt = programs.startAt AND future.endAt < programs.endAt)
+                    OR (future.startAt = programs.startAt AND future.endAt = programs.endAt AND future.title <= programs.title)
+                )
+            ) <= :futureLimit
+        )
+        ORDER BY channelId ASC, startAt ASC, endAt ASC
+        """,
+    )
+    fun observeChannelListPrograms(now: Long, futureLimit: Int): Flow<List<ProgramEntity>>
 
     @Query("SELECT COUNT(*) FROM programs")
     fun observeProgramCount(): Flow<Int>
@@ -158,6 +177,9 @@ interface ProgramDao {
 
     @Query("SELECT channelId FROM programs GROUP BY channelId ORDER BY channelId ASC LIMIT :limit")
     fun observeProgramChannelSamples(limit: Int): Flow<List<String>>
+
+    @Query("SELECT * FROM programs WHERE channelId = :channelId ORDER BY startAt ASC, endAt ASC")
+    fun observeProgramsForChannel(channelId: String): Flow<List<ProgramEntity>>
 
     @Query("SELECT COUNT(*) FROM programs")
     suspend fun countPrograms(): Int

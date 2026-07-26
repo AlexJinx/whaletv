@@ -41,4 +41,38 @@ class EpgGuideSourceDiscoveryTest {
             parseCachedGuideSources(cached, allowedChannelIds = setOf("Old${EPG_GUIDE_SOURCE_CACHE_LIMIT}.cn")).size,
         )
     }
+
+    @Test
+    fun cachedGuideSourcesFitInCache_detectsTruncatedCandidateCache() {
+        val exactFit = (1..EPG_GUIDE_SOURCE_CACHE_LIMIT).map { index ->
+            EpgGuideSource("Channel$index.cn", "https://example.com/channel$index.xml", null, null)
+        }
+        val overflow = exactFit + EpgGuideSource(
+            "Overflow.cn",
+            "https://example.com/overflow.xml",
+            null,
+            null,
+        )
+
+        assertEquals(true, cachedGuideSourcesFitInCache(exactFit, EPG_GUIDE_SOURCE_CACHE_LIMIT))
+        assertEquals(false, cachedGuideSourcesFitInCache(overflow, EPG_GUIDE_SOURCE_CACHE_LIMIT))
+    }
+
+    @Test
+    fun cachedGuideSourceCoverage_requiresEveryCurrentChannel() {
+        val coverage = serializeCachedGuideSourceCoverage(setOf("A.cn", "B.cn"))
+
+        assertEquals(true, cachedGuideSourceCoverageCovers(coverage, setOf("A.cn")))
+        assertEquals(true, cachedGuideSourceCoverageCovers(coverage, setOf("A.cn", "B.cn")))
+        assertEquals(false, cachedGuideSourceCoverageCovers(coverage, setOf("A.cn", "B.cn", "C.cn")))
+    }
+
+    @Test
+    fun cachedGuideSourceCoverage_normalizesChannelIdsBeforeComparing() {
+        val coverage = serializeCachedGuideSourceCoverage(setOf("CCTV1.cn@China", "CCTV2.cn"))
+
+        assertEquals(true, cachedGuideSourceCoverageCovers(coverage, setOf("CCTV1.cn")))
+        assertEquals(true, cachedGuideSourceCoverageCovers(coverage, setOf("CCTV1.cn@China", "CCTV2.cn")))
+        assertEquals(false, cachedGuideSourceCoverageCovers(coverage, setOf("CCTV3.cn")))
+    }
 }

@@ -12,20 +12,23 @@ fun WhaleTvRoot(viewModel: MainViewModel) {
     val playingChannel = state.playingChannelId?.let { channelId ->
         state.channels.firstOrNull { it.id == channelId }
     }
+    val playerChannel = playingChannel?.copy(
+        schedulePrograms = state.playingSchedulePrograms.ifEmpty { playingChannel.schedulePrograms },
+    )
 
-    LaunchedEffect(state.playingChannelId, playingChannel) {
-        if (state.playingChannelId != null && playingChannel == null) {
+    LaunchedEffect(state.playingChannelId, playerChannel) {
+        if (state.playingChannelId != null && playerChannel == null) {
             viewModel.closePlayer()
         }
     }
 
-    if (playingChannel != null) {
+    if (playerChannel != null) {
         PlayerScreen(
-            channel = playingChannel,
+            channel = playerChannel,
             onClose = viewModel::closePlayer,
-            onToggleFavorite = { favorite -> viewModel.toggleFavorite(playingChannel.id, favorite) },
-            onPlaybackReady = { streamUrl -> viewModel.markPlaybackReady(playingChannel.id, streamUrl) },
-            onPlaybackFailed = { streamUrl -> viewModel.markPlaybackFailed(playingChannel.id, streamUrl) },
+            onToggleFavorite = { favorite -> viewModel.toggleFavorite(playerChannel.id, favorite) },
+            onPlaybackReady = { streamUrl -> viewModel.markPlaybackReady(playerChannel.id, streamUrl) },
+            onPlaybackFailed = { streamUrl -> viewModel.markPlaybackFailed(playerChannel.id, streamUrl) },
         )
     } else if (state.isSettingsOpen) {
         SettingsScreen(

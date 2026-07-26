@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -333,6 +334,7 @@ private fun SearchResultsPane(
     onChannelSelected: (String) -> Unit,
 ) {
     var highlightedCardKey by remember(items.firstOrNull()?.key) { mutableStateOf(items.firstOrNull()?.key) }
+    var gridFocused by remember(items.firstOrNull()?.key) { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -360,7 +362,12 @@ private fun SearchResultsPane(
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onFocusChanged { gridFocused = it.hasFocus }
+                    .focusGroup(),
+            ) {
                 val visibleRows = if (maxHeight < 620.dp) 2 else SEARCH_GRID_VISIBLE_ROWS
                 val cardHeight = ((maxHeight - SearchGridGap * (visibleRows - 1)) / visibleRows)
                     .coerceAtLeast(1.dp)
@@ -374,7 +381,7 @@ private fun SearchResultsPane(
                     items(items, key = { it.key }) { item ->
                         HomeChannelCard(
                             item = item,
-                            highlighted = item.key == highlightedCardKey,
+                            highlighted = gridFocused && item.key == highlightedCardKey,
                             onFocused = { highlightedCardKey = item.key },
                             onClick = { onChannelSelected(item.key) },
                             modifier = Modifier

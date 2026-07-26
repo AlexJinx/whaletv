@@ -82,7 +82,7 @@ fun ChannelWithStreams.toDomain(now: Long, programs: List<ProgramEntity>): TvCha
         currentEntity?.let(::add)
         addAll(orderedPrograms.filter { it.startAt > now })
     }
-        .take(CHANNEL_SCHEDULE_PROGRAM_LIMIT)
+        .take(CHANNEL_LIST_SCHEDULE_PROGRAM_LIMIT)
         .map { it.toDomain() }
 
     return TvChannel(
@@ -123,4 +123,4 @@ fun ProgramEntity.toDomain(): Program = Program(
     description = description,
 )
 
-private const val CHANNEL_SCHEDULE_PROGRAM_LIMIT = 6
+internal const val CHANNEL_LIST_SCHEDULE_PROGRAM_LIMIT = 6

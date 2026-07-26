@@ -2,6 +2,7 @@ package com.jing.whaletv.data.repository
 
 import androidx.room.withTransaction
 import com.jing.whaletv.core.AppConstants
+import com.jing.whaletv.data.local.CHANNEL_LIST_SCHEDULE_PROGRAM_LIMIT
 import com.jing.whaletv.data.local.ChannelEntity
 import com.jing.whaletv.data.local.ProgramEntity
 import com.jing.whaletv.data.local.StreamEntity
@@ -20,15 +21,22 @@ import com.jing.whaletv.data.model.TvStream
 import com.jing.whaletv.data.model.streamHealthAfterFailure
 import com.jing.whaletv.data.network.FetchResult
 import com.jing.whaletv.data.network.PlaylistClient
+import com.jing.whaletv.data.parser.EpgGuideSource
+import com.jing.whaletv.data.parser.EpgGuideSourceParser
 import com.jing.whaletv.data.parser.M3uParser
 import com.jing.whaletv.data.parser.XmltvParser
 import java.io.StringReader
 import java.net.URI
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -47,6 +55,7 @@ class ChannelRepository(
     private val settingsRepository: SettingsRepository,
     private val m3uParser: M3uParser = M3uParser(),
     private val xmltvParser: XmltvParser = XmltvParser(),
+    private val epgGuideSourceParser: EpgGuideSourceParser = EpgGuideSourceParser(),
 ) {
     private val channelDao = database.channelDao()
     private val programDao = database.programDao()
@@ -60,10 +69,19 @@ class ChannelRepository(
         .followSslRedirects(true)
         .build()
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun observeChannels(): Flow<List<TvChannel>> {
         return combine(
-            channelDao.observeChannelsWithStreams(),
-            programDao.observeAllPrograms(),
+            channelDao.observePlayableChannelsWithStreams(
+                healthyStatus = StreamHealth.HEALTHY.name,
+                unknownStatus = StreamHealth.UNKNOWN.name,
+            ),
+            channelListProgramRefreshTicks().flatMapLatest { listProgramNow ->
+                programDao.observeChannelListPrograms(
+                    now = listProgramNow,
+                    futureLimit = CHANNEL_LIST_SCHEDULE_PROGRAM_LIMIT,
+                )
+            },
         ) { channels, programs ->
             val now = System.currentTimeMillis()
             val programsByChannel = programs.groupBy { it.channelId }
@@ -71,6 +89,12 @@ class ChannelRepository(
                 channel.toDomain(now, programsByChannel[channel.channel.id].orEmpty())
             }
         }.flowOn(Dispatchers.Default)
+    }
+
+    fun observeProgramsForChannel(channelId: String): Flow<List<Program>> {
+        return programDao.observeProgramsForChannel(channelId)
+            .map { programs -> programs.map { it.toDomain() } }
+            .flowOn(Dispatchers.Default)
     }
 
     fun observeSyncSummary(): Flow<SyncSummary> {
@@ -197,7 +221,7 @@ class ChannelRepository(
             runCatching {
                 val result = playlistClient.fetchText(url = normalizedUrl)
                 val body = (result as FetchResult.Success).body
-                val channels = m3uParser.parse(body)
+                val channels = parsePlaylistSource(body, source)
                 if (channels.isEmpty()) {
                     throw IllegalStateException("源可访问，但没有解析到频道")
                 }
@@ -224,6 +248,13 @@ class ChannelRepository(
             fetchText = { url -> playlistClient.fetchText(url = url) },
             xmltvParser = xmltvParser,
         )
+    }
+
+    private fun parsePlaylistSource(body: String, source: PlaylistSource): List<ParsedChannel> {
+        val channels = m3uParser.parse(body)
+        return source.filterScope?.let { scope ->
+            filterParsedChannelsForScope(channels, scope)
+        } ?: channels
     }
 
     suspend fun resetStreamHealth() = withContext(Dispatchers.Default) {
@@ -266,9 +297,6 @@ class ChannelRepository(
             val sources = playlistSourcesForSync(playlistScope, mode)
             setState(stateKeys.attempt, System.currentTimeMillis().toString())
 
-            val parsed = mutableListOf<ParsedChannel>()
-            var notModifiedCount = 0
-            var successCount = 0
             val hasCachedChannels = channelDao.countPlayableChannels(
                 healthyStatus = StreamHealth.HEALTHY.name,
                 unknownStatus = StreamHealth.UNKNOWN.name,
@@ -278,41 +306,30 @@ class ChannelRepository(
                 hasCachedChannels
 
             try {
-                var lastSourceError: Throwable? = null
-                sources.forEach { source ->
-                    runCatching {
-                        when (val result = fetchSource(source, useCacheHeaders = useCacheHeaders)) {
-                            FetchResult.NotModified -> notModifiedCount += 1
-                            is FetchResult.Success -> {
-                                val parsedChannels = m3uParser.parse(result.body)
-                                if (parsedChannels.isEmpty()) {
-                                    throw IllegalStateException("${source.label}没有解析到频道")
-                                }
-                                successCount += 1
-                                saveHttpCacheHeaders(source.cacheKey(), result)
-                                m3uParser.parseXmltvUrl(result.body)?.let { xmltvUrl ->
-                                    setState(KEY_DISCOVERED_EPG_URL, xmltvUrl)
-                                }
-                                parsed += parsedChannels
-                            }
+                val fetchOutcome = fetchFirstParsedPlaylistSource(
+                    sources = sources,
+                    fetchSource = { source -> fetchSource(source, useCacheHeaders = useCacheHeaders) },
+                    parseSource = ::parsePlaylistSource,
+                    onSuccess = { source, result ->
+                        saveHttpCacheHeaders(source.cacheKey(), result)
+                        m3uParser.parseXmltvUrl(result.body)?.let { xmltvUrl ->
+                            setState(KEY_DISCOVERED_EPG_URL, xmltvUrl)
                         }
-                    }.onFailure { error ->
-                        lastSourceError = error
-                    }
+                    },
+                )
+
+                if (fetchOutcome.successCount == 0 && fetchOutcome.notModifiedCount == 0) {
+                    throw fetchOutcome.lastError ?: IllegalStateException("No playlist source succeeded")
                 }
 
-                if (successCount == 0 && notModifiedCount == 0) {
-                    throw lastSourceError ?: IllegalStateException("No playlist source succeeded")
-                }
-
-                if (parsed.isNotEmpty()) {
+                if (fetchOutcome.parsedChannels.isNotEmpty()) {
                     importParsedChannels(
-                        channels = parsed,
+                        channels = fetchOutcome.parsedChannels,
                         missingChannelHandling = missingChannelHandlingForSync(playlistScope, mode),
                     )
                 }
 
-                if (successCount > 0 || notModifiedCount > 0) {
+                if (fetchOutcome.successCount > 0 || fetchOutcome.notModifiedCount > 0) {
                     if (mode == PlaylistSyncMode.ALL_BACKFILL || playlistScope == PlaylistScope.ALL) {
                         restorePlaylistPlayableState()
                     }
@@ -485,16 +502,87 @@ class ChannelRepository(
             ?.trim()
             ?.takeIf(::isHttpUrl)
 
-        setState(KEY_EPG_GUIDE_SOURCE_COUNT, "0")
-        setState(KEY_EPG_GUIDE_SAMPLE_CHANNELS, null)
+        val guideSources = resolveEpgGuideSources(channelIds)
+        setState(KEY_EPG_GUIDE_SOURCE_COUNT, guideSources.size.toString())
+        setState(
+            KEY_EPG_GUIDE_SAMPLE_CHANNELS,
+            guideSources
+                .map { it.channelId }
+                .distinct()
+                .take(EPG_SETTINGS_SAMPLE_CHANNEL_LIMIT)
+                .joinToString(",")
+                .ifBlank { null },
+        )
 
         val urls = buildList {
             playlistEpgUrl?.let(::add)
+            selectGuideSourcesForFetch(guideSources, EPG_GUIDE_SOURCE_FETCH_LIMIT).forEach { source ->
+                add(source.url)
+            }
         }
             .distinct()
             .take(EPG_TOTAL_SOURCE_FETCH_LIMIT)
 
         return EpgSourceResolution(urls = urls)
+    }
+
+    private suspend fun resolveEpgGuideSources(channelIds: Set<String>): List<EpgGuideSource> {
+        val cachedSources = parseCachedGuideSources(
+            value = syncStateDao.getValue(KEY_EPG_GUIDE_SOURCE_CACHE),
+            allowedChannelIds = channelIds,
+        )
+        val cacheCoversCurrentChannels = cachedGuideSourceCoverageCovers(
+            value = syncStateDao.getValue(KEY_EPG_GUIDE_SOURCE_CACHE_CHANNELS),
+            channelIds = channelIds,
+        )
+        val cachedFetchResult = runCatching {
+            fetchEpgGuides(useCacheHeaders = cachedSources.isNotEmpty() && cacheCoversCurrentChannels)
+        }.getOrElse {
+            return cachedSources.takeIf { cacheCoversCurrentChannels }.orEmpty()
+        }
+
+        return when (cachedFetchResult) {
+            FetchResult.NotModified -> cachedSources.takeIf { cacheCoversCurrentChannels }.orEmpty().ifEmpty {
+                fetchFreshEpgGuides(channelIds).getOrDefault(emptyList())
+            }
+            is FetchResult.Success -> runCatching {
+                parseAndCacheEpgGuides(cachedFetchResult, channelIds)
+            }.getOrElse {
+                cachedSources.takeIf { cacheCoversCurrentChannels }.orEmpty()
+            }
+        }
+    }
+
+    private suspend fun fetchFreshEpgGuides(channelIds: Set<String>): Result<List<EpgGuideSource>> {
+        return runCatching {
+            when (val result = fetchEpgGuides(useCacheHeaders = false)) {
+                FetchResult.NotModified -> emptyList()
+                is FetchResult.Success -> parseAndCacheEpgGuides(result, channelIds)
+            }
+        }
+    }
+
+    private suspend fun fetchEpgGuides(useCacheHeaders: Boolean): FetchResult {
+        return playlistClient.fetchText(
+            url = AppConstants.EPG_GUIDES_URL,
+            etag = syncStateDao.getValue("$KEY_EPG_GUIDES.etag").takeIf { useCacheHeaders },
+            lastModified = syncStateDao.getValue("$KEY_EPG_GUIDES.last_modified").takeIf { useCacheHeaders },
+        )
+    }
+
+    private suspend fun parseAndCacheEpgGuides(result: FetchResult.Success, channelIds: Set<String>): List<EpgGuideSource> {
+        saveHttpCacheHeaders(KEY_EPG_GUIDES, result)
+        val sources = epgGuideSourceParser.parse(result.body, channelIds)
+        setState(KEY_EPG_GUIDE_SOURCE_CACHE, serializeCachedGuideSources(sources, EPG_GUIDE_SOURCE_CACHE_LIMIT))
+        setState(
+            KEY_EPG_GUIDE_SOURCE_CACHE_CHANNELS,
+            if (cachedGuideSourcesFitInCache(sources, EPG_GUIDE_SOURCE_CACHE_LIMIT)) {
+                serializeCachedGuideSourceCoverage(channelIds)
+            } else {
+                null
+            },
+        )
+        return sources
     }
 
     private suspend fun fetchEpgSource(url: String, useCacheHeaders: Boolean): FetchResult {
@@ -650,12 +738,15 @@ class ChannelRepository(
         const val KEY_FULL_PLAYLIST_ATTEMPT = "playlist.full.last_attempt_at"
         const val KEY_FULL_PLAYLIST_ERROR = "playlist.full.last_error"
         const val KEY_EPG = "epg"
+        const val KEY_EPG_GUIDES = "epg.guides"
         const val KEY_EPG_ATTEMPT = "epg.last_attempt_at"
         const val KEY_EPG_SUCCESS = "epg.last_success_at"
         const val KEY_EPG_ERROR = "epg.last_error"
         const val KEY_DISCOVERED_EPG_URL = "epg.discovered_url"
         const val KEY_EPG_GUIDE_SOURCE_COUNT = "epg.guide_source_count"
         const val KEY_EPG_GUIDE_SAMPLE_CHANNELS = "epg.guide_sample_channels"
+        const val KEY_EPG_GUIDE_SOURCE_CACHE = "epg.guide_source_cache"
+        const val KEY_EPG_GUIDE_SOURCE_CACHE_CHANNELS = "epg.guide_source_cache_channels"
         const val ONE_HOUR_MS = 60 * 60 * 1000L
         const val STARTUP_STREAM_PRECHECK_TIMEOUT_MS = 1_000L
         const val STARTUP_STREAM_PRECHECK_CONCURRENCY = 4
@@ -678,9 +769,72 @@ internal enum class MissingChannelHandling {
     MARK_UNAVAILABLE_AND_DELETE_STREAMS,
 }
 
-internal data class PlaylistSource(val key: String, val url: String, val label: String) {
+internal data class PlaylistSource(
+    val key: String,
+    val url: String,
+    val label: String,
+    val filterScope: PlaylistScope? = null,
+) {
     fun cacheKey(): String = "$key.${url.hashCode().toUInt().toString(16)}"
 }
+
+internal data class PlaylistFetchOutcome(
+    val parsedChannels: List<ParsedChannel>,
+    val successCount: Int,
+    val notModifiedCount: Int,
+    val lastError: Throwable?,
+)
+
+internal suspend fun fetchFirstParsedPlaylistSource(
+    sources: List<PlaylistSource>,
+    fetchSource: suspend (PlaylistSource) -> FetchResult,
+    parseSource: (String, PlaylistSource) -> List<ParsedChannel>,
+    onSuccess: suspend (PlaylistSource, FetchResult.Success) -> Unit = { _, _ -> },
+): PlaylistFetchOutcome {
+    val parsedChannels = mutableListOf<ParsedChannel>()
+    var successCount = 0
+    var notModifiedCount = 0
+    var lastError: Throwable? = null
+
+    for (source in sources) {
+        val sourceSucceeded = runCatching {
+            when (val result = fetchSource(source)) {
+                FetchResult.NotModified -> {
+                    notModifiedCount += 1
+                    true
+                }
+                is FetchResult.Success -> {
+                    val parsed = parseSource(result.body, source)
+                    if (parsed.isEmpty()) {
+                        throw IllegalStateException("${source.label}没有解析到频道")
+                    }
+                    successCount += 1
+                    onSuccess(source, result)
+                    parsedChannels += parsed
+                    true
+                }
+            }
+        }.onFailure { error ->
+            lastError = error
+        }.getOrDefault(false)
+
+        if (sourceSucceeded) break
+    }
+
+    return PlaylistFetchOutcome(
+        parsedChannels = parsedChannels,
+        successCount = successCount,
+        notModifiedCount = notModifiedCount,
+        lastError = lastError,
+    )
+}
+
+private const val GITEE_SOURCE_ID = "gitee"
+
+private val GITEE_SCOPED_INDEX_FALLBACK_SCOPES = setOf(
+    PlaylistScope.COUNTRY_CN,
+    PlaylistScope.LANGUAGE_ZHO,
+)
 
 private fun parseStoredList(value: String?): List<String> {
     return value
@@ -695,13 +849,76 @@ internal fun PlaylistScope.cacheKey(): String = "scope.$id"
 internal fun playlistUrlForScope(scope: PlaylistScope): String = scope.playlistUrl
 
 internal fun playlistSourcesForScope(scope: PlaylistScope): List<PlaylistSource> {
-    return AppConstants.playlistUrls(scope.playlistPath).map { remoteUrl ->
-        PlaylistSource(
-            key = scope.cacheKey(),
-            url = remoteUrl.url,
-            label = remoteUrl.label,
-        )
+    return buildList {
+        AppConstants.playlistUrls(scope.playlistPath).forEach { remoteUrl ->
+            add(
+                PlaylistSource(
+                    key = scope.cacheKey(),
+                    url = remoteUrl.url,
+                    label = remoteUrl.label,
+                ),
+            )
+            giteeIndexFallbackSource(scope, remoteUrl.sourceId)?.let(::add)
+        }
     }
+}
+
+private fun giteeIndexFallbackSource(scope: PlaylistScope, sourceId: String): PlaylistSource? {
+    if (sourceId != GITEE_SOURCE_ID || scope !in GITEE_SCOPED_INDEX_FALLBACK_SCOPES) return null
+    val mirror = AppConstants.remoteDataSources.firstOrNull { it.id == GITEE_SOURCE_ID } ?: return null
+    return PlaylistSource(
+        key = "${scope.cacheKey()}.gitee_index_fallback",
+        url = "${mirror.playlistBaseUrl}/index.m3u",
+        label = "${mirror.label}全量索引兜底",
+        filterScope = scope,
+    )
+}
+
+internal fun filterParsedChannelsForScope(channels: List<ParsedChannel>, scope: PlaylistScope): List<ParsedChannel> {
+    return when (scope) {
+        PlaylistScope.ALL -> channels
+        PlaylistScope.COUNTRY_CN,
+        PlaylistScope.LANGUAGE_ZHO -> channels.filter(::isChinesePlaylistChannel)
+        PlaylistScope.COUNTRY_US -> channels.filter { it.hasCountrySuffix("us") }
+        PlaylistScope.COUNTRY_JP,
+        PlaylistScope.LANGUAGE_JPN -> channels.filter { it.hasCountrySuffix("jp") || it.hasCountrySuffix("jpn") }
+        PlaylistScope.COUNTRY_UK -> channels.filter { it.hasCountrySuffix("uk") || it.hasCountrySuffix("gb") }
+        PlaylistScope.COUNTRY_KR,
+        PlaylistScope.LANGUAGE_KOR -> channels.filter { it.hasCountrySuffix("kr") || it.hasCountrySuffix("kor") }
+        PlaylistScope.LANGUAGE_ENG -> channels.filter { channel ->
+            channel.hasCountrySuffix("us") ||
+                channel.hasCountrySuffix("uk") ||
+                channel.hasCountrySuffix("gb") ||
+                channel.normalizedSearchText().contains("english")
+        }
+        PlaylistScope.CATEGORY_NEWS -> channels.filter { channel ->
+            channel.groupTitle.equals("News", ignoreCase = true) ||
+                channel.groupTitle.equals("Public", ignoreCase = true)
+        }
+    }
+}
+
+private fun isChinesePlaylistChannel(channel: ParsedChannel): Boolean {
+    val text = channel.normalizedSearchText()
+    return channel.hasCountrySuffix("cn") ||
+        channel.hasCountrySuffix("hk") ||
+        channel.hasCountrySuffix("mo") ||
+        channel.hasCountrySuffix("tw") ||
+        text.contains("china") ||
+        text.contains("chinese") ||
+        text.any { it.code in 0x4E00..0x9FFF }
+}
+
+private fun ParsedChannel.hasCountrySuffix(country: String): Boolean {
+    val normalizedCountry = country.lowercase(Locale.ROOT)
+    return id
+        .substringBefore("@")
+        .substringAfterLast('.', "")
+        .lowercase(Locale.ROOT) == normalizedCountry
+}
+
+private fun ParsedChannel.normalizedSearchText(): String {
+    return "$id $name $groupTitle".lowercase(Locale.ROOT)
 }
 
 internal fun shouldBackfillAllForScope(scope: PlaylistScope): Boolean {
@@ -721,6 +938,16 @@ internal fun missingChannelHandlingForSync(scope: PlaylistScope, mode: PlaylistS
         mode == PlaylistSyncMode.ALL_BACKFILL -> MissingChannelHandling.MARK_UNAVAILABLE_AND_DELETE_STREAMS
         scope == PlaylistScope.ALL -> MissingChannelHandling.MARK_UNAVAILABLE_AND_DELETE_STREAMS
         else -> MissingChannelHandling.MARK_UNAVAILABLE
+    }
+}
+
+internal fun channelListProgramRefreshTicks(
+    refreshIntervalMs: Long = CHANNEL_LIST_PROGRAM_REFRESH_INTERVAL_MS,
+    nowProvider: () -> Long = System::currentTimeMillis,
+): Flow<Long> = flow {
+    while (true) {
+        emit(nowProvider())
+        delay(refreshIntervalMs)
     }
 }
 
@@ -784,3 +1011,5 @@ private fun Program.toEntity(): ProgramEntity = ProgramEntity(
     endAt = endAt,
     description = description,
 )
+
+private const val CHANNEL_LIST_PROGRAM_REFRESH_INTERVAL_MS = 60_000L

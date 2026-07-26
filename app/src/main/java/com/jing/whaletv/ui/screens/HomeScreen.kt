@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -170,9 +171,10 @@ fun HomeScreen(
     val countryFocusRequesters = remember(state.countryTabs) {
         state.countryTabs.associate { it.id to FocusRequester() }
     }
+    val fallbackCountryFocusRequester = remember { FocusRequester() }
     val selectedCountryFocusRequester = countryFocusRequesters[selectedCountry]
         ?: countryFocusRequesters.values.firstOrNull()
-        ?: FocusRequester()
+        ?: fallbackCountryFocusRequester
     val platformDensity = LocalDensity.current
 
     CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = platformDensity.fontScale)) {
@@ -789,11 +791,13 @@ private fun ChannelContent(
     var highlightedCardKey by remember(firstItemKey) { mutableStateOf(firstItemKey) }
     var gridFocused by remember(firstItemKey) { mutableStateOf(false) }
     var refreshFocused by remember { mutableStateOf(false) }
+    var didRequestInitialGridFocus by remember { mutableStateOf(false) }
     val refreshShape = RoundedCornerShape(8.dp)
     LaunchedEffect(firstItemKey) {
-        if (firstItemKey != null) {
+        if (firstItemKey != null && !didRequestInitialGridFocus) {
             delay(120)
             runCatching { firstCardFocusRequester.requestFocus() }
+            didRequestInitialGridFocus = true
         }
     }
 
@@ -857,7 +861,12 @@ private fun ChannelContent(
         if (cardItems.isEmpty()) {
             EmptyHomeState(modifier = Modifier.fillMaxSize())
         } else {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onFocusChanged { gridFocused = it.hasFocus }
+                    .focusGroup(),
+            ) {
                 val visibleRows = if (maxHeight < 620.dp) 2 else HOME_GRID_VISIBLE_ROWS
                 val cardHeight = ((maxHeight - HomeGridGap * (visibleRows - 1)) / visibleRows)
                     .coerceAtLeast(1.dp)
@@ -878,7 +887,6 @@ private fun ChannelContent(
                             item = item,
                             highlighted = gridFocused && item.key == highlightedCardKey,
                             onFocused = { highlightedCardKey = item.key },
-                            onFocusChanged = { focused -> gridFocused = focused },
                             onClick = { onChannelSelected(item.key) },
                             modifier = cardModifier
                                 .fillMaxWidth()

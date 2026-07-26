@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.jing.whaletv.core.AppContainer
 import com.jing.whaletv.data.model.AppSettings
+import com.jing.whaletv.data.model.Program
 import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.data.model.TvChannel
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -35,6 +37,7 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     val message: String? = null,
     val playingChannelId: String? = null,
+    val playingSchedulePrograms: List<Program> = emptyList(),
     val isSettingsOpen: Boolean = false,
     val isSearchOpen: Boolean = false,
     val isCountryEditorOpen: Boolean = false,
@@ -48,6 +51,7 @@ private data class UiPartialState(
     val isRefreshing: Boolean = false,
     val message: String? = null,
     val playingChannelId: String? = null,
+    val playingSchedulePrograms: List<Program> = emptyList(),
     val isSettingsOpen: Boolean = false,
     val isSearchOpen: Boolean = false,
     val isCountryEditorOpen: Boolean = false,
@@ -59,6 +63,7 @@ class MainViewModel(
     private val isRefreshing = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
     private val playingChannelId = MutableStateFlow<String?>(null)
+    private val playingSchedulePrograms = MutableStateFlow<List<Program>>(emptyList())
     private val isSettingsOpen = MutableStateFlow(false)
     private val isSearchOpen = MutableStateFlow(false)
     private val isCountryEditorOpen = MutableStateFlow(false)
@@ -85,6 +90,8 @@ class MainViewModel(
         base.copy(message = msg)
     }.combine(playingChannelId) { base, channelId ->
         base.copy(playingChannelId = channelId)
+    }.combine(playingSchedulePrograms) { base, schedulePrograms ->
+        base.copy(playingSchedulePrograms = schedulePrograms)
     }.combine(isSettingsOpen) { base, settingsOpen ->
         base.copy(isSettingsOpen = settingsOpen)
     }.combine(isSearchOpen) { base, searchOpen ->
@@ -114,6 +121,7 @@ class MainViewModel(
                 isRefreshing = state.isRefreshing,
                 message = state.message,
                 playingChannelId = state.playingChannelId,
+                playingSchedulePrograms = state.playingSchedulePrograms,
                 isSettingsOpen = state.isSettingsOpen,
                 isSearchOpen = state.isSearchOpen,
                 isCountryEditorOpen = state.isCountryEditorOpen,
@@ -127,6 +135,7 @@ class MainViewModel(
         )
 
     init {
+        observePlayingSchedule()
         runStartupStreamPrecheck()
         syncIfCacheEmpty()
     }
@@ -153,6 +162,20 @@ class MainViewModel(
 
     fun closePlayer() {
         playingChannelId.value = null
+    }
+
+    private fun observePlayingSchedule() {
+        viewModelScope.launch {
+            playingChannelId.collectLatest { channelId ->
+                if (channelId == null) {
+                    playingSchedulePrograms.value = emptyList()
+                    return@collectLatest
+                }
+                container.channelRepository.observeProgramsForChannel(channelId).collect { programs ->
+                    playingSchedulePrograms.value = programs
+                }
+            }
+        }
     }
 
     fun openSettings() {

@@ -112,7 +112,10 @@ fun PlayerScreen(
     var overlayRevealTick by remember(channel.id) { mutableIntStateOf(0) }
     var favorite by remember(channel.id, channel.isFavorite) { mutableStateOf(channel.isFavorite) }
     var now by remember(channel.id) { mutableLongStateOf(System.currentTimeMillis()) }
-    val reportedFailedUrls = remember(channel.id) { mutableSetOf<String>() }
+    val currentProgram = channel.schedulePrograms.lastOrNull { it.startAt <= now && it.endAt > now }
+        ?: channel.currentProgram?.takeIf { it.endAt > now }
+    val nextProgram = channel.schedulePrograms.firstOrNull { it.startAt > now }
+        ?: channel.nextProgram?.takeIf { it.startAt > now }
     val player = remember(context) {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -148,6 +151,16 @@ fun PlayerScreen(
 
     LaunchedEffect(channel.id) {
         runCatching { screenFocusRequester.requestFocus() }
+    }
+
+    LaunchedEffect(streams) {
+        val nextIndex = coercePlaybackStreamIndex(streamIndex, streams.size)
+        if (nextIndex != streamIndex) {
+            streamIndex = nextIndex
+            if (streams.isNotEmpty()) {
+                errorMessage = null
+            }
+        }
     }
 
     LaunchedEffect(channel.currentProgram?.startAt, channel.currentProgram?.endAt) {
@@ -209,9 +222,7 @@ fun PlayerScreen(
 
                 override fun onPlayerError(error: PlaybackException) {
                     playbackState = Player.STATE_IDLE
-                    if (reportedFailedUrls.add(stream.url)) {
-                        onPlaybackFailed(stream.url)
-                    }
+                    onPlaybackFailed(stream.url)
                     val nextIndex = streamIndex + 1
                     if (nextIndex < streams.size) {
                         streamIndex = nextIndex
@@ -256,6 +267,8 @@ fun PlayerScreen(
         if (overlayVisible || currentStream == null || errorMessage != null) {
             PlayerOverlay(
                 channel = channel,
+                currentProgram = currentProgram,
+                nextProgram = nextProgram,
                 favorite = favorite,
                 now = now,
                 currentStream = currentStream,
@@ -272,6 +285,7 @@ fun PlayerScreen(
                     onToggleFavorite(nextFavorite)
                     revealOverlay()
                 },
+                onUserInteraction = ::revealOverlay,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -299,6 +313,8 @@ private fun buildMediaSource(context: Context, stream: TvStream): MediaSource {
 @Composable
 private fun PlayerOverlay(
     channel: TvChannel,
+    currentProgram: Program?,
+    nextProgram: Program?,
     favorite: Boolean,
     now: Long,
     currentStream: TvStream?,
@@ -310,6 +326,7 @@ private fun PlayerOverlay(
     onRetry: () -> Unit,
     onNextSource: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val platformDensity = LocalDensity.current
@@ -338,10 +355,11 @@ private fun PlayerOverlay(
             )
         }
         PlayerProgramOverlay(
-            currentProgram = channel.currentProgram,
-            nextProgram = channel.nextProgram,
+            currentProgram = currentProgram,
+            nextProgram = nextProgram,
             schedulePrograms = channel.schedulePrograms,
             now = now,
+            onUserInteraction = onUserInteraction,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
@@ -507,10 +525,13 @@ private fun PlayerProgramOverlay(
     nextProgram: Program?,
     schedulePrograms: List<Program>,
     now: Long,
+    onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val platformDensity = LocalDensity.current
-    val upcomingPrograms = schedulePrograms
+    val relevantPrograms = schedulePrograms.filter { it.endAt > now }
+    val upcomingPrograms = relevantPrograms
+        .filter { it.startAt > now }
         .filterNot { program -> currentProgram?.let { program.isSameScheduleProgram(it) } == true }
         .ifEmpty { listOfNotNull(nextProgram) }
         .distinctBy { "${it.channelId}|${it.startAt}|${it.title}" }
@@ -555,6 +576,7 @@ private fun PlayerProgramOverlay(
                 )
                 PlayerUpcomingProgramBlock(
                     programs = upcomingPrograms,
+                    onUserInteraction = onUserInteraction,
                     modifier = Modifier.weight(1.05f),
                 )
             }
@@ -690,10 +712,13 @@ private fun PlayerProgramElapsedText(program: Program, now: Long) {
 @Composable
 private fun PlayerUpcomingProgramBlock(
     programs: List<Program>,
+    onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var focused by remember { mutableStateOf(false) }
+    val listShape = RoundedCornerShape(8.dp)
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -712,19 +737,35 @@ private fun PlayerUpcomingProgramBlock(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .clip(listShape)
+                    .border(
+                        width = 1.dp,
+                        color = if (focused) WhaleTokens.Cyan.copy(alpha = 0.52f) else Color.Transparent,
+                        shape = listShape,
+                    )
+                    .onFocusChanged { focused = it.isFocused }
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) {
                             return@onPreviewKeyEvent event.key == Key.DirectionUp || event.key == Key.DirectionDown
                         }
                         val currentIndex = listState.firstVisibleItemIndex
                         val targetIndex = when (event.key) {
-                            Key.DirectionDown -> (currentIndex + 1).coerceAtMost(programs.lastIndex)
-                            Key.DirectionUp -> (currentIndex - 1).coerceAtLeast(0)
+                            Key.DirectionDown -> programListScrollTargetIndex(
+                                currentIndex = currentIndex,
+                                itemCount = programs.size,
+                                direction = ProgramListScrollDirection.DOWN,
+                            )
+                            Key.DirectionUp -> programListScrollTargetIndex(
+                                currentIndex = currentIndex,
+                                itemCount = programs.size,
+                                direction = ProgramListScrollDirection.UP,
+                            )
                             else -> return@onPreviewKeyEvent false
                         }
                         if (targetIndex == currentIndex) {
                             return@onPreviewKeyEvent false
                         }
+                        onUserInteraction()
                         coroutineScope.launch {
                             listState.animateScrollToItem(targetIndex)
                         }
@@ -792,6 +833,29 @@ private fun formatProgramDuration(value: Long): String {
 }
 
 private fun Long.twoDigits(): String = if (this < 10L) "0$this" else toString()
+
+internal enum class ProgramListScrollDirection {
+    UP,
+    DOWN,
+}
+
+internal fun programListScrollTargetIndex(
+    currentIndex: Int,
+    itemCount: Int,
+    direction: ProgramListScrollDirection,
+): Int {
+    if (itemCount <= 0) return 0
+    val boundedIndex = currentIndex.coerceIn(0, itemCount - 1)
+    return when (direction) {
+        ProgramListScrollDirection.UP -> (boundedIndex - 1).coerceAtLeast(0)
+        ProgramListScrollDirection.DOWN -> (boundedIndex + 1).coerceAtMost(itemCount - 1)
+    }
+}
+
+internal fun coercePlaybackStreamIndex(currentIndex: Int, streamCount: Int): Int {
+    if (streamCount <= 0) return 0
+    return currentIndex.coerceIn(0, streamCount - 1)
+}
 
 @Composable
 private fun PlayerRailButton(

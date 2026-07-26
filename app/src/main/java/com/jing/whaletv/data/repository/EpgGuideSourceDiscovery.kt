@@ -17,6 +17,38 @@ internal fun serializeCachedGuideSources(sources: List<EpgGuideSource>, limit: I
         .ifBlank { null }
 }
 
+internal fun cachedGuideSourcesFitInCache(sources: List<EpgGuideSource>, limit: Int): Boolean {
+    if (limit < 0) return false
+    return sources.distinctBy { it.channelId to it.url }.size <= limit
+}
+
+internal fun serializeCachedGuideSourceCoverage(channelIds: Set<String>): String? {
+    return channelIds
+        .map(::normalizeGuideChannelId)
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sorted()
+        .joinToString(",")
+        .ifBlank { null }
+}
+
+internal fun cachedGuideSourceCoverageCovers(value: String?, channelIds: Set<String>): Boolean {
+    val requiredChannelIds = channelIds
+        .map(::normalizeGuideChannelId)
+        .filter { it.isNotBlank() }
+        .toSet()
+    if (requiredChannelIds.isEmpty()) return true
+
+    val cachedChannelIds = value
+        ?.split(',')
+        ?.map { normalizeGuideChannelId(it.trim()) }
+        ?.filter { it.isNotBlank() }
+        ?.toSet()
+        .orEmpty()
+
+    return cachedChannelIds.containsAll(requiredChannelIds)
+}
+
 internal fun parseCachedGuideSources(value: String?, allowedChannelIds: Set<String>?): List<EpgGuideSource> {
     val allowed = allowedChannelIds
         ?.map(::normalizeGuideChannelId)

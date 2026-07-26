@@ -1,13 +1,17 @@
 package com.jing.whaletv.ui
 
+import com.jing.whaletv.data.model.PlaylistScope
 import com.jing.whaletv.data.model.SettingsDiagnostics
 import com.jing.whaletv.data.model.SyncSummary
 import com.jing.whaletv.ui.screens.epgCoverageText
 import com.jing.whaletv.ui.screens.epgGuideCandidateText
 import com.jing.whaletv.ui.screens.epgSampleChannelsText
 import com.jing.whaletv.ui.screens.settingsEpgSourceState
+import com.jing.whaletv.ui.screens.settingsPlaylistSourceState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsDisplayModelTest {
@@ -37,12 +41,12 @@ class SettingsDisplayModelTest {
     }
 
     @Test
-    fun epgGuideCandidateText_showsGuideSourcesDisabled() {
+    fun epgGuideCandidateText_showsGuideSourceCount() {
         assertEquals(
-            "guides.json 未使用",
+            "guides.json 2 个候选",
             epgGuideCandidateText(SyncSummary(epgGuideSourceCount = 2)),
         )
-        assertEquals("guides.json 未使用", epgGuideCandidateText(SyncSummary(epgGuideSourceCount = 0)))
+        assertEquals("guides.json 未发现", epgGuideCandidateText(SyncSummary(epgGuideSourceCount = 0)))
     }
 
     @Test
@@ -58,15 +62,15 @@ class SettingsDisplayModelTest {
     }
 
     @Test
-    fun settingsEpgSourceState_ignoresGuideCandidatesWithoutPlaylistUrl() {
+    fun settingsEpgSourceState_usesGuideCandidatesWithoutPlaylistUrl() {
         val state = settingsEpgSourceState(
             effectiveEpgUrl = null,
             syncSummary = SyncSummary(epgGuideSourceCount = 3),
         )
 
-        assertEquals("尚未发现节目单地址", state.note)
-        assertEquals("playlist 暂未发现 x-tvg-url", state.value)
-        assertEquals(false, state.canTest)
+        assertEquals("来自 guides.json 官方候选", state.note)
+        assertEquals("3 个候选节目单来源", state.value)
+        assertEquals(true, state.canTest)
     }
 
     @Test
@@ -79,5 +83,24 @@ class SettingsDisplayModelTest {
         assertEquals("尚未发现节目单地址", state.note)
         assertEquals("playlist 暂未发现 x-tvg-url", state.value)
         assertEquals(false, state.canTest)
+    }
+
+    @Test
+    fun settingsPlaylistSourceState_showsScopedFallbackChainForChinaScope() {
+        val state = settingsPlaylistSourceState(PlaylistScope.COUNTRY_CN)
+
+        assertEquals("3 个来源 · 中国频道", state.note)
+        assertTrue(state.value.contains("Gitee raw 镜像 → Gitee raw 镜像全量索引兜底 → iptv-org 官方源"))
+        assertTrue(state.value.contains("当前优先：https://gitee.com/AlexJinx/iptv-mirror/raw/pages/iptv/countries/cn.m3u"))
+    }
+
+    @Test
+    fun settingsPlaylistSourceState_keepsRegularScopeChainCompact() {
+        val state = settingsPlaylistSourceState(PlaylistScope.CATEGORY_NEWS)
+
+        assertEquals("2 个来源 · 新闻频道", state.note)
+        assertTrue(state.value.contains("Gitee raw 镜像 → iptv-org 官方源"))
+        assertTrue(state.value.contains("当前优先：https://gitee.com/AlexJinx/iptv-mirror/raw/pages/iptv/categories/news.m3u"))
+        assertFalse(state.value.contains("全量索引兜底"))
     }
 }

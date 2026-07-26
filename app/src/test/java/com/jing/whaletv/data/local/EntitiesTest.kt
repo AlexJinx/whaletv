@@ -47,7 +47,7 @@ class EntitiesTest {
     }
 
     @Test
-    fun toDomain_returnsSortedCurrentAndUpcomingProgramsWithLimit() {
+    fun toDomain_returnsSortedCurrentAndUpcomingProgramsWithListLimit() {
         val now = Instant.parse("1970-01-01T00:00:10Z").toEpochMilli()
         val programs = listOf(
             program("Future 6", 16_000L, 17_000L),

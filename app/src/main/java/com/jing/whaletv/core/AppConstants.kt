@@ -5,7 +5,9 @@ import com.jing.whaletv.BuildConfig
 object AppConstants {
     const val APP_NAME = "鲸鱼TV"
     const val IPTV_ORG_PLAYLIST_BASE_URL = "https://iptv-org.github.io/iptv"
+    const val IPTV_ORG_API_BASE_URL = "https://iptv-org.github.io/api"
     const val PRIMARY_PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.m3u"
+    const val EPG_GUIDES_URL = "$IPTV_ORG_API_BASE_URL/guides.json"
     const val DEFAULT_REFRESH_INTERVAL_HOURS = 12
     const val HTTP_TIMEOUT_SECONDS = 12L
     const val DEFAULT_USER_AGENT = "WhaleTV/1.1 AndroidTV"
@@ -36,7 +38,7 @@ object AppConstants {
 
     fun playlistUrls(path: String): List<RemoteUrl> {
         return remoteDataSources.map { source ->
-            RemoteUrl(label = source.label, url = "${source.playlistBaseUrl}/$path")
+            RemoteUrl(sourceId = source.id, label = source.label, url = "${source.playlistBaseUrl}/$path")
         }
     }
 
@@ -49,6 +51,7 @@ data class RemoteDataSource(
 )
 
 data class RemoteUrl(
+    val sourceId: String,
     val label: String,
     val url: String,
 )

@@ -41,6 +41,16 @@ class PlaybackStreamSelectorTest {
     }
 
     @Test
+    fun playbackStreams_returnsEmptyForUnavailableChannel() {
+        val channel = channelWithStreams(
+            stream(url = "https://example.com/live.m3u8", health = StreamHealth.HEALTHY),
+            isAvailable = false,
+        )
+
+        assertEquals(emptyList<TvStream>(), channel.playbackStreams())
+    }
+
+    @Test
     fun nextPlaybackStream_skipsFailedUrls() {
         val channel = channelWithStreams(
             stream(url = "https://example.com/one.m3u8", sortOrder = 0),
@@ -82,7 +92,10 @@ class PlaybackStreamSelectorTest {
         assertEquals(StreamHealth.UNHEALTHY, streamHealthAfterFailure(STREAM_UNHEALTHY_FAILURE_THRESHOLD + 1))
     }
 
-    private fun channelWithStreams(vararg streams: TvStream): TvChannel {
+    private fun channelWithStreams(
+        vararg streams: TvStream,
+        isAvailable: Boolean = true,
+    ): TvChannel {
         return TvChannel(
             id = "test.channel",
             name = "Test Channel",
@@ -91,7 +104,7 @@ class PlaybackStreamSelectorTest {
             priority = 0,
             isFavorite = false,
             lastWatchedAt = null,
-            isAvailable = true,
+            isAvailable = isAvailable,
             streams = streams.toList(),
             currentProgram = null,
             nextProgram = null,
